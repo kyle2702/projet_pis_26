@@ -1,0 +1,70 @@
+.header {
+  background-color: #84e7ee;
+  padding: 1.5rem;
+  display: flex;
+  justify-content: flex-start; /* Aligne le contenu à gauche */
+  align-items: center;
+  width: 100%; /* Assure que le header prend toute la largeur */
+  position: fixed; /* Le fixe en haut de la page */
+  top: 0;
+  left: 0;
+  z-index: 1000; /* S'assure qu'il est au-dessus des autres éléments */
+  box-sizing: border-box; /* Inclut padding dans la largeur totale */
+}
+
+
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  position: relative;
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.header-logo-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.header-logo {
+  height: 64px;
+  margin-left: 32px;
+}
+
+.nav-link {
+  color: rgba(0, 0, 0, 0.87);
+  margin: 0 20px;
+  text-decoration: none;
+  font-size: 1.2em;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: none; /* Supprime le contour */
+  outline: none; /* Supprime le contour au focus */
+  transition: background-color 0.3s, color 0.3s, font-size 0.3s;
+}
+
+
+.nav-link:hover, .nav-link:focus, .nav-link:active {
+  font-size: 1.35em; /* Agrandit le texte au survol */
+  color: rgba(0, 0, 0, 0.87); /* Garde la couleur blanche */
+  outline: none;
+  border: none;
+  box-shadow: none;
+}
+
+.nav-link.active {
+  color: #949494;
+  font-weight: bold;
+  pointer-events: none; /* Désactive le clic */
+  cursor: default; /* Curseur par défaut */
+}
