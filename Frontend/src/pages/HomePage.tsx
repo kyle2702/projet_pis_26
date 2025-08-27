@@ -7,7 +7,7 @@ const HomePage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const { user: loggedInUser, login, logout, isLoading, token } = useAuth();
+  const { user: loggedInUser, logout, isLoading, token, loginWithEmail, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -15,28 +15,11 @@ const HomePage: React.FC = () => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:3000/auths/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Identifiants incorrects');
-      }
-
-      const data = await response.json();
-      
-      // Met à jour l'état d'authentification puis redirige
-              login({ id: data.id, username: data.username }, data.token);
-  navigate('/hours', { state: { showWelcome: true } }); // redirection immédiate après login avec flag
-
+      await loginWithEmail(username, password);
+      navigate('/hours', { state: { showWelcome: true } });
     } catch (err) {
       if (err instanceof Error) {
-        setError(err.message);
+        setError(err.message || 'Identifiants invalides');
       } else {
         setError('Une erreur est survenue lors de la connexion.');
       }
@@ -119,7 +102,7 @@ const HomePage: React.FC = () => {
       {token ? (
         // Vue si l'utilisateur est connecté
         <div>
-          <h1>Welcome, {loggedInUser?.username}</h1>
+          <h1>Welcome, {loggedInUser?.displayName || loggedInUser?.email}</h1>
           <button 
             onClick={handleLogout} 
             style={{ ...styles.button, ...styles.logoutButton }}
@@ -130,10 +113,10 @@ const HomePage: React.FC = () => {
       ) : (
         // Vue si l'utilisateur n'est pas connecté (formulaire)
         <>
-          <h1>Home Page</h1>
+      <h1>Home Page</h1>
           <form onSubmit={handleSubmit} style={styles.loginForm}>
             <div style={styles.formGroup}>
-              <label htmlFor="username" style={styles.label}>Username</label>
+        <label htmlFor="username" style={styles.label}>Email</label>
               <input
                 type="text"
                 id="username"
@@ -160,6 +143,21 @@ const HomePage: React.FC = () => {
               style={{ ...styles.button, ...styles.loginButton }}
             >
               Login
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                setError('');
+                try {
+                  await loginWithGoogle();
+                  navigate('/hours', { state: { showWelcome: true } });
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : 'Erreur Google Sign-In');
+                }
+              }}
+              style={{ ...styles.button, backgroundColor: '#34a853' }}
+            >
+              Se connecter avec Google
             </button>
           </form>
         </>

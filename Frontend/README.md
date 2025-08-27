@@ -1,69 +1,37 @@
-# React + TypeScript + Vite
+# Frontend Hours (React + TS + Vite) avec Firebase
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Configuration Firebase
 
-Currently, two official plugins are available:
+1. Copiez `.env.example` vers `.env.local` et remplissez les variables avec la configuration Web de votre projet Firebase (Console Firebase > Paramètres du projet > Vos apps > SDK Web).
+2. Activez Authentication (Email/Password et/ou Google) dans la Console.
+3. Activez Cloud Firestore et appliquez des règles minimales (à adapter):
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/hours/{hourId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Lecture admin globale: nécessite isAdmin=true sur le doc de l'appelant
+    match /users/{userId} {
+      allow list: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+  }
+}
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Démarrer
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- Installation: `npm i`
+- Dév: `npm run dev`
+- Build: `npm run build`
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## Modèle de données
+
+- Profil: `users/{uid}` avec `email`, `displayName`, `isAdmin` (bool), `totalHours` (number optionnel).
+- Heures: `users/{uid}/hours/{docId}` avec `{ title: string, date: string, hours: number }`.

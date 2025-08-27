@@ -1,16 +1,29 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useState, useEffect, useContext } from 'react';
+import { getFirebaseAuth, getGoogleProvider, getFirestoreDb } from '../firebase/config';
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  signInWithPopup,
+  type User as FirebaseUser,
+  getIdToken,
+} from 'firebase/auth';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 
-interface User {
-  id: number;
-  username: string;
-}
+type PublicUser = {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+};
 
 interface AuthContextType {
-  user: User | null;
-  login: (userData: User, token: string) => void;
-  logout: () => void;
+  user: PublicUser | null;
   token: string | null;
-  isLoading: boolean; // Ajouter l'état de chargement
+  isLoading: boolean;
+  loginWithEmail: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -23,46 +36,67 @@ export const useAuth = () => {
   return context;
 };
 
+function toPublicUser(u: FirebaseUser): PublicUser {
+  return { uid: u.uid, email: u.email, displayName: u.displayName };
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<PublicUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Initialiser à true
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-
-    if (storedToken) {
-      setToken(storedToken);
-    }
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        console.error("Failed to parse user from localStorage", e);
-        localStorage.removeItem('user');
+    let unsub: (() => void) | undefined;
+    try {
+      const a = getFirebaseAuth();
+      const d = getFirestoreDb();
+      unsub = onAuthStateChanged(a, async (u) => {
+      if (u) {
+        setUser(toPublicUser(u));
+        const t = await getIdToken(u, /* forceRefresh */ true).catch(() => null);
+        setToken(t);
+        // Upsert du document utilisateur minimal
+        try {
+          await setDoc(
+      doc(d, 'users', u.uid),
+            {
+              email: u.email ?? null,
+              displayName: u.displayName ?? null,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } catch (e) {
+          // non bloquant pour l'UI
+          console.warn('Impossible de créer/mettre à jour le profil utilisateur:', e);
+        }
+      } else {
         setUser(null);
+        setToken(null);
       }
+      setIsLoading(false);
+      });
+    } catch (e) {
+      console.warn('Firebase non configuré ou indisponible:', e);
+      setIsLoading(false);
     }
-    setIsLoading(false);
+    return () => unsub?.();
   }, []);
 
-  const login = (userData: User, userToken: string) => {
-    localStorage.setItem('user', JSON.stringify(userData));
-    localStorage.setItem('token', userToken);
-    setUser(userData);
-    setToken(userToken);
+  const loginWithEmail = async (email: string, password: string) => {
+  await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
   };
 
-  const logout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('token');
-    setUser(null);
-    setToken(null);
+  const loginWithGoogle = async () => {
+  await signInWithPopup(getFirebaseAuth(), getGoogleProvider());
+  };
+
+  const logout = async () => {
+  await signOut(getFirebaseAuth());
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, token, isLoading }}>
+    <AuthContext.Provider value={{ user, token, isLoading, loginWithEmail, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );

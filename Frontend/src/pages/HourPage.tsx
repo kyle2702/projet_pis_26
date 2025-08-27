@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocation } from 'react-router-dom';
+import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { getFirestoreDb } from '../firebase/config';
 
 
 interface HourEntry {
@@ -21,17 +23,25 @@ const HourPage: React.FC = () => {
     const fetchHours = async () => {
       if (!user) return;
       try {
-        const response = await fetch('http://localhost:3000/hours/me/hours', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ username: user.username }),
+        const db = getFirestoreDb();
+        // entries: collection("users/{uid}/hours")
+        const hoursCol = collection(db, 'users', user.uid, 'hours');
+        const snap = await getDocs(hoursCol);
+        const list: HourEntry[] = [];
+        snap.forEach((d) => {
+          const data = d.data() as Partial<HourEntry> & { date?: string; title?: string; hours?: number };
+          list.push({
+            id: d.id,
+            title: data.title ?? 'Sans titre',
+            date: data.date ?? '',
+            hours: typeof data.hours === 'number' ? data.hours : 0,
+          });
         });
-        if (!response.ok) throw new Error('Erreur lors de la récupération des heures');
-        const result = await response.json();
-        setEntries(result.entries || []);
-        setTotalHours(result.total || 0);
+        setEntries(list);
+        // summary: doc("users/{uid}") avec un champ totalHours (optionnel)
+  const uDoc = await getDoc(doc(db, 'users', user.uid));
+        const total = (uDoc.exists() && typeof uDoc.data().totalHours === 'number') ? uDoc.data().totalHours : list.reduce((s, e) => s + (e.hours || 0), 0);
+        setTotalHours(total);
       } catch (error) {
         console.error(error);
       }
@@ -103,7 +113,7 @@ const HourPage: React.FC = () => {
           boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
           zIndex: 2000,
         }}>
-          Bienvenue, <strong>{user.username}</strong>
+          Bienvenue, <strong>{user.displayName || user.email}</strong>
         </div>
       )}
       <h1>Mes heures prestées</h1>

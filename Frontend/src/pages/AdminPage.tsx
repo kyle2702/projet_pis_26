@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { getFirestoreDb } from '../firebase/config';
 
-interface User {
-  id: number;
+interface Row {
+  id: string;
   username: string;
   totalHours: number;
 }
 
 const AdminPage: React.FC = () => {
   const { user, token, isLoading } = useAuth();
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<Row[]>([]);
   const [sortBy, setSortBy] = useState<'username' | 'totalHours' | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [loading, setLoading] = useState(true);
@@ -17,29 +19,34 @@ const AdminPage: React.FC = () => {
 
   useEffect(() => {
     if (isLoading) return;
-    if (!user || user.id !== 1) {
-      setError('Accès interdit');
-      setLoading(false);
-      return;
-    }
-    fetch('http://localhost:3000/users/admin/users', {
-      headers: {
-        'x-user-id': user.id?.toString() ?? '',
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error('Erreur serveur');
-        return res.json();
-      })
-      .then((data) => {
-        setUsers(data);
+    // Simple règle: seul un utilisateur listé en admin peut voir: stockez un champ isAdmin sur son doc
+    (async () => {
+      try {
+        if (!user) throw new Error('Accès interdit');
+  const db = getFirestoreDb();
+  const me = await getDoc(doc(db, 'users', user.uid));
+        const isAdmin = me.exists() && me.data().isAdmin === true;
+        if (!isAdmin) throw new Error('Accès interdit');
+
+  const usersCol = collection(db, 'users');
+        const snap = await getDocs(usersCol);
+        const rows: Row[] = [];
+        type UserDoc = { displayName?: string | null; email?: string | null; totalHours?: number; isAdmin?: boolean };
+        for (const d of snap.docs) {
+          const data = d.data() as UserDoc;
+          rows.push({
+            id: d.id,
+            username: data.displayName || data.email || d.id,
+            totalHours: typeof data.totalHours === 'number' ? data.totalHours : 0,
+          });
+        }
+        setUsers(rows);
         setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Erreur inconnue');
         setLoading(false);
-      });
+      }
+    })();
   }, [user, token, isLoading]);
 
   if (isLoading || loading) return <div>Chargement...</div>;
