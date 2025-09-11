@@ -69,6 +69,30 @@ const AdminPage: React.FC = () => {
           appliedAt: appData.appliedAt,
           approved: true
         });
+        // Notifier le candidat (best-effort)
+        try {
+          const apiUrl = import.meta.env.VITE_NOTIFY_API_URL as string | undefined;
+          if (apiUrl) {
+            const { getFirebaseAuth } = await import('../firebase/config');
+            const auth = getFirebaseAuth();
+            const idToken = await auth.currentUser?.getIdToken();
+            await fetch(`${apiUrl.replace(/\/$/, '')}/notify/application-accepted`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
+              },
+              body: JSON.stringify({
+                jobId: appData.jobId,
+                jobTitle: appData.jobTitle,
+                applicantId: appData.userId,
+                applicantName: appData.displayName
+              })
+            }).catch(() => {});
+          }
+        } catch {
+          // ignoré volontairement
+        }
       }
       setApplications(applications => applications.filter(app => app.id !== id));
     } catch {

@@ -205,5 +205,45 @@ app.post('/notify/new-application', requireAuth, async (req, res) => {
         return res.status(500).json({ error: 'Internal error' });
     }
 });
+// Notification au candidat quand sa candidature est acceptée (admin-only)
+app.post('/notify/application-accepted', requireAdmin, async (req, res) => {
+    const { jobId, jobTitle, applicantId, applicantName } = req.body || {};
+    if (!jobId || !jobTitle || !applicantId)
+        return res.status(400).json({ error: 'Missing fields' });
+    const link = `/jobs?jobId=${encodeURIComponent(jobId)}`;
+    try {
+        // Token du candidat
+        const tokenDoc = await db.collection('fcmTokens').doc(applicantId).get();
+        const token = tokenDoc.exists ? tokenDoc.data()?.token : undefined;
+        // Écrire notification Firestore (type: application_accepted)
+        const createdAt = firebase_admin_1.default.firestore.FieldValue.serverTimestamp();
+        await db.collection('notifications').add({
+            userId: applicantId,
+            type: 'application_accepted',
+            jobId,
+            title: `Candidature acceptée: ${jobTitle}`,
+            description: applicantName ? `${applicantName}, votre candidature a été acceptée.` : 'Votre candidature a été acceptée.',
+            createdAt,
+            readBy: [],
+        });
+        // Push FCM au candidat
+        if (token) {
+            await firebase_admin_1.default.messaging().send({
+                token,
+                notification: {
+                    title: 'Candidature acceptée',
+                    body: `Votre candidature a été acceptée: ${jobTitle}`,
+                },
+                data: { link, jobId, jobTitle },
+                webpush: { fcmOptions: { link } },
+            });
+        }
+        return res.json({ ok: true, sent: token ? 1 : 0 });
+    }
+    catch (e) {
+        console.error('notify/application-accepted error', e);
+        return res.status(500).json({ error: 'Internal error' });
+    }
+});
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`notify-api listening on :${port}`));
