@@ -10,6 +10,7 @@ import {
   getIdToken,
 } from 'firebase/auth';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { initMessagingAndGetToken, listenForegroundMessages } from '../firebase/messaging';
 
 type PublicUser = {
   uid: string;
@@ -47,6 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
+    let unsubMsg: (() => void) | undefined;
     try {
       const a = getFirebaseAuth();
       const d = getFirestoreDb();
@@ -67,9 +69,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // non bloquant pour l'UI
           console.warn('Impossible de créer/mettre à jour le profil utilisateur:', e);
         }
+
+        // Init FCM (meilleur effort)
+        try {
+          await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+          await initMessagingAndGetToken(u.uid);
+          unsubMsg = await listenForegroundMessages((payload) => {
+            // Optionnel: toast/alert minimal pour les messages au premier plan
+            const title = payload.notification?.title || payload.data?.title;
+            const body = payload.notification?.body || payload.data?.body;
+            if (title) {
+              // Utiliser une UI plus propre si dispo
+              console.info('Notification:', title, body);
+            }
+          });
+        } catch (e) {
+          console.info('FCM non initialisé (permission refusée ou non supporté).', e);
+        }
       } else {
         setUser(null);
         setToken(null);
+        // Cleanup messaging listener
+        try { unsubMsg?.(); } catch { /* noop */ }
       }
       setIsLoading(false);
       });
@@ -77,7 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Firebase non configuré ou indisponible:', e);
       setIsLoading(false);
     }
-    return () => unsub?.();
+    return () => { try { unsub?.(); unsubMsg?.(); } catch { /* noop */ } };
   }, []);
 
   const loginWithEmail = async (email: string, password: string) => {

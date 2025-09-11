@@ -35,3 +35,13 @@ service cloud.firestore {
 
 - Profil: `users/{uid}` avec `email`, `displayName`, `isAdmin` (bool), `totalHours` (number optionnel).
 - Heures: `users/{uid}/hours/{docId}` avec `{ title: string, date: string, hours: number }`.
+
+## Notifications Push (Firebase Cloud Messaging)
+
+Ce projet intègre FCM pour envoyer des notifications push Web.
+
+1. Dans la Console Firebase > Cloud Messaging > Configuration, générez une clé VAPID Web et copiez-la dans `.env.local` sous `VITE_FIREBASE_VAPID_KEY`.
+2. Vérifiez que la config Web Firebase est complète dans `.env.local` (apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId).
+3. Le service worker `public/firebase-messaging-sw.js` est inclus et gère la réception en background.
+4. À la connexion, l'app demande la permission et enregistre le token dans `fcmTokens/{uid}`.
+5. Les notifications sont envoyées via une Cloud Function (voir dossier `functions/`, trigger onCreate sur `jobs`).
