@@ -55,17 +55,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(toPublicUser(u));
         const t = await getIdToken(u, /* forceRefresh */ true).catch(() => null);
         setToken(t);
-        // Upsert du document utilisateur minimal
+        // Upsert du document utilisateur minimal, sans écraser displayName existant par null
         try {
-          await setDoc(
-      doc(d, 'users', u.uid),
-            {
-              email: u.email ?? null,
-              displayName: u.displayName ?? null,
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
+          const userDocRef = doc(d, 'users', u.uid);
+          const update: Record<string, unknown> = { email: u.email ?? null, updatedAt: serverTimestamp() };
+          if (u.displayName) {
+            update.displayName = u.displayName;
+          }
+          await setDoc(userDocRef, update, { merge: true });
         } catch (e) {
           // non bloquant pour l'UI
           console.warn('Impossible de créer/mettre à jour le profil utilisateur:', e);

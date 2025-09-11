@@ -1,3 +1,20 @@
+.logout-btn {
+  color: #d32f2f;
+  font-size: 1.1em;
+  border-radius: 0;
+  margin: 0;
+  background: none;
+  transition: background-color 0.3s, color 0.3s, font-size 0.3s;
+  border-top: 1px solid #f5c6cb;
+}
+.logout-btn:hover, .logout-btn:focus, .logout-btn:active {
+  font-size: 1.25em;
+  color: #b71c1c;
+  background: #fbe9e7;
+  outline: none;
+  border: none;
+  box-shadow: none;
+}
 .header {
   background-color: #84e7ee;
   padding: 1.5rem;
@@ -22,9 +39,31 @@
 }
 
 .header-nav {
-  display: flex;
-  align-items: center;
-  gap: 32px;
+  display: none;
+}
+
+.dropdown-menu {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  border-radius: 8px;
+  background: #fff;
+  min-width: 180px;
+  padding: 1rem 0;
+  z-index: 1001;
+}
+
+.dropdown-menu .nav-link {
+  display: block;
+  padding: 0.7rem 2rem;
+  color: #222;
+  font-size: 1.1em;
+  border-radius: 0;
+  margin: 0;
+  background: none;
+}
+
+.dropdown-menu .nav-link.active {
+  background: #e6f0fa;
+  color: #646cff;
 }
 
 .header-logo-center {

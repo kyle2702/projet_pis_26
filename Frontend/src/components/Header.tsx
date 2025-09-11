@@ -4,9 +4,10 @@ import { NavLink } from 'react-router-dom';
 import './Header.css';
 import { getFirestoreDb } from '../firebase/config';
 import { doc, getDoc } from 'firebase/firestore';
+import NotificationsBell from './NotificationsBell';
 
 const Header: React.FC = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -24,24 +25,63 @@ const Header: React.FC = () => {
     })();
     return () => { cancelled = true; };
   }, [user]);
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header className="header">
       <div className="header-content">
-        <nav className="header-nav">
-          <NavLink to="/" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            HomePage
-          </NavLink>
-          <NavLink to="/hours" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            Mes Heures
-          </NavLink>
-          {isAdmin && (
-            <NavLink to="/admin" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-              Admin
-            </NavLink>
-          )}
-        </nav>
-        <div className="header-logo-center">
+        <button
+          className="menu-btn"
+          aria-label="Ouvrir le menu"
+          onClick={() => setMenuOpen((v) => !v)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginRight: 24 }}
+        >
+          <span style={{ display: 'inline-block', width: 32, height: 32 }}>
+            <svg width="32" height="32" viewBox="0 0 32 32">
+              <rect y="6" width="32" height="4" rx="2" fill="#222" />
+              <rect y="14" width="32" height="4" rx="2" fill="#222" />
+              <rect y="22" width="32" height="4" rx="2" fill="#222" />
+            </svg>
+          </span>
+        </button>
+        {menuOpen && (
+          <div className="dropdown-menu" style={{ position: 'absolute', top: '100%', left: 0, background: '#fff', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', borderRadius: 8, padding: '1rem 0', minWidth: 180, zIndex: 1001 }}>
+            
+            
+            <NavLink to="/jobs" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')} onClick={() => setMenuOpen(false)} style={{ display: 'block', padding: '0.7rem 2rem' }}>Jobs</NavLink>
+            {isAdmin && (
+              <NavLink to="/admin" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')} onClick={() => setMenuOpen(false)} style={{ display: 'block', padding: '0.7rem 2rem' }}>Admin</NavLink>
+            )}
+            {/* Bouton de déconnexion */}
+              {user ? (
+                <>
+                <NavLink to="/hours" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')} onClick={() => setMenuOpen(false)} style={{ display: 'block', padding: '0.7rem 2rem' }}>Mes heures</NavLink>
+
+                  <button
+                    onClick={async () => {
+                      setMenuOpen(false);
+                      try {
+                        await logout();
+                      } catch {
+                        window.location.href = '/';
+                      }
+                    }}
+                    className="nav-link logout-btn"
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.7rem 2rem', background: 'none', border: 'none', textAlign: 'center', width: '100%', cursor: 'pointer', color: 'red', fontWeight: 'bold' }}
+                  >
+                    <img src="/deconnexion.png" alt="Déconnexion" style={{ width: 20, height: 20, marginRight: 8 }} />
+                    Déconnexion
+                  </button>
+                </>
+              ) : (
+                <NavLink to="/" className="nav-link" onClick={() => setMenuOpen(false)} style={{ display: 'block', padding: '0.7rem 2rem', color: 'green', fontWeight: 'bold' }}>
+                  Connexion
+                </NavLink>
+              )}
+          </div>
+        )}
+        <div className="header-logo-center" style={{ display:'flex', alignItems:'center', gap:16 }}>
           <img src="/pis.png" alt="Logo Pionnier" className="header-logo" />
+          {user && <NotificationsBell />}
         </div>
       </div>
     </header>

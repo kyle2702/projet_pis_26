@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 const HomePage = lazy(() => import('./pages/HomePage'));
 const HourPage = lazy(() => import('./pages/HourPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
+const JobsPage = lazy(() => import('./pages/JobsPage'));
 
 import { AuthProvider } from './contexts/AuthContext';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -17,6 +18,10 @@ const router = createBrowserRouter([
       {
         index: true,
         element: <HomePage />,
+      },
+      {
+        path: 'jobs',
+        element: <JobsPage />,
       },
       {
         path: 'hours',

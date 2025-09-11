@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function isUser(uid) { return request.auth != null && request.auth.uid == uid; }
+    function isAdmin() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // Users collection: user lit ses propres données, admin lit tout
+    match /users/{userId} {
+      allow read: if isUser(userId) || isAdmin();
+      allow write: if isUser(userId) || isAdmin();
+    }
+
+    // Jobs: lecture pour tous (ou limiter aux connectés), création uniquement admin
+    match /jobs/{jobId} {
+      allow read: if true; // public
+      allow create, update, delete: if isAdmin();
+      // Sous-collection applications (candidatures validées)
+      match /applications/{appId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.auth.uid == appId; // chaque user crée sa propre candidature validée
+        allow delete: if isAdmin();
+        allow update: if false; // verrouiller modifications directes
+      }
+    }
+
+    // Table des demandes de candidatures (pending -> admin approuve) jobApplications
+    match /jobApplications/{docId} {
+      allow create: if isSignedIn();
+      allow read: if isAdmin() || request.auth.uid == resource.data.userId;
+      allow update, delete: if isAdmin();
+    }
+
+    // Notifications pour un utilisateur
+    match /notifications/{notifId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId && request.resource.data.keys().hasOnly(['readBy']) &&
+        request.resource.data.readBy.size() == resource.data.readBy.size() + 1 && request.resource.data.readBy.hasAll(resource.data.readBy) && request.resource.data.readBy.hasOnly([request.auth.uid]);
+      allow create: if isAdmin(); // créées par backend (Cloud Function) exécutée en admin
+      allow delete: if isAdmin();
+    }
+
+    // Fallback deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

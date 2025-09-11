@@ -14,10 +14,46 @@ interface HourEntry {
 
 const HourPage: React.FC = () => {
   const { user } = useAuth();
+  const [firestoreName, setFirestoreName] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchName() {
+      if (!user?.uid) { setFirestoreName(null); return; }
+      try {
+        const { getFirestoreDb } = await import('../firebase/config');
+        const { doc, getDoc } = await import('firebase/firestore');
+        const db = getFirestoreDb();
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (!cancelled && snap.exists()) {
+          const name = snap.data().displayName;
+          setFirestoreName(typeof name === 'string' && name.trim() ? name : null);
+        }
+      } catch {
+        if (!cancelled) setFirestoreName(null);
+      }
+    }
+    fetchName();
+    return () => { cancelled = true; };
+  }, [user?.uid]);
   const location = useLocation();
   const [entries, setEntries] = useState<HourEntry[]>([]);
   const [totalHours, setTotalHours] = useState(0);
-  const [showWelcome, setShowWelcome] = useState(!!location.state?.showWelcome);
+  // Ne montre le popup que si navigation avec state.showWelcome === true (connexion), jamais sur refresh direct
+  const [showWelcome, setShowWelcome] = useState(false);
+
+  // Affiche le popup uniquement lors d'une navigation après login (pas sur reload)
+  useEffect(() => {
+    let isReload = false;
+    if (window.performance && window.performance.getEntriesByType) {
+      const navs = window.performance.getEntriesByType('navigation');
+      if (navs.length && (navs[0] as PerformanceNavigationTiming).type === 'reload') {
+        isReload = true;
+      }
+    }
+    if (location.state?.showWelcome && !isReload) {
+      setShowWelcome(true);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     const fetchHours = async () => {
@@ -49,7 +85,7 @@ const HourPage: React.FC = () => {
     fetchHours();
     // Affiche le popup de bienvenue pendant 2 secondes
     if (showWelcome) {
-      const timer = setTimeout(() => setShowWelcome(false), 2000);
+      const timer = setTimeout(() => setShowWelcome(false), 3000);
       return () => clearTimeout(timer);
     }
   }, [user, showWelcome]);
@@ -113,7 +149,7 @@ const HourPage: React.FC = () => {
           boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
           zIndex: 2000,
         }}>
-          Bienvenue, <strong>{user.displayName || user.email}</strong>
+          Bienvenue, <strong>{firestoreName || user.displayName || ''}</strong>
         </div>
       )}
       <h1>Mes heures prestées</h1>

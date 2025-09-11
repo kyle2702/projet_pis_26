@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -7,7 +7,29 @@ const HomePage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const { user: loggedInUser, logout, isLoading, token, loginWithEmail, loginWithGoogle } = useAuth();
+  const { user: loggedInUser, logout, isLoading, token, loginWithEmail } = useAuth();
+  const [firestoreName, setFirestoreName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchName() {
+      if (!loggedInUser?.uid) { setFirestoreName(null); return; }
+      try {
+        const { getFirestoreDb } = await import('../firebase/config');
+        const { doc, getDoc } = await import('firebase/firestore');
+        const db = getFirestoreDb();
+        const snap = await getDoc(doc(db, 'users', loggedInUser.uid));
+        if (!cancelled && snap.exists()) {
+          const name = snap.data().displayName;
+          setFirestoreName(typeof name === 'string' && name.trim() ? name : null);
+        }
+      } catch {
+        if (!cancelled) setFirestoreName(null);
+      }
+    }
+    fetchName();
+    return () => { cancelled = true; };
+  }, [loggedInUser?.uid]);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -16,7 +38,7 @@ const HomePage: React.FC = () => {
 
     try {
       await loginWithEmail(username, password);
-      navigate('/hours', { state: { showWelcome: true } });
+  navigate('/jobs', { state: { showWelcome: true } });
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message || 'Identifiants invalides');
@@ -102,7 +124,8 @@ const HomePage: React.FC = () => {
       {token ? (
         // Vue si l'utilisateur est connecté
         <div>
-          <h1>Welcome, {loggedInUser?.displayName || loggedInUser?.email}</h1>
+          <h1>Bienvenue, {firestoreName || loggedInUser?.displayName || 'Utilisateur'}</h1>
+          
           <button 
             onClick={handleLogout} 
             style={{ ...styles.button, ...styles.logoutButton }}
@@ -113,7 +136,7 @@ const HomePage: React.FC = () => {
       ) : (
         // Vue si l'utilisateur n'est pas connecté (formulaire)
         <>
-      <h1>Home Page</h1>
+      <h1>Connexion</h1>
           <form onSubmit={handleSubmit} style={styles.loginForm}>
             <div style={styles.formGroup}>
         <label htmlFor="username" style={styles.label}>Email</label>
@@ -142,23 +165,9 @@ const HomePage: React.FC = () => {
               type="submit" 
               style={{ ...styles.button, ...styles.loginButton }}
             >
-              Login
+              Connexion
             </button>
-            <button
-              type="button"
-              onClick={async () => {
-                setError('');
-                try {
-                  await loginWithGoogle();
-                  navigate('/hours', { state: { showWelcome: true } });
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : 'Erreur Google Sign-In');
-                }
-              }}
-              style={{ ...styles.button, backgroundColor: '#34a853' }}
-            >
-              Se connecter avec Google
-            </button>
+          
           </form>
         </>
       )}

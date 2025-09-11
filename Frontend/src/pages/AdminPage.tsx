@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, getDocs as getDocsFirestore, updateDoc, query, where } from 'firebase/firestore';
 import { getFirestoreDb } from '../firebase/config';
 
 interface Row {
@@ -9,26 +9,84 @@ interface Row {
   totalHours: number;
 }
 
+interface JobApplication {
+  id: string;
+  jobId: string;
+  jobTitle: string;
+  userId: string;
+  email: string;
+  displayName: string;
+  appliedAt: unknown;
+  status: string;
+}
+
 const AdminPage: React.FC = () => {
+  const [applications, setApplications] = useState<JobApplication[]>([]);
+  const [appLoading, setAppLoading] = useState(false);
+  const [appError, setAppError] = useState<string | null>(null);
   const { user, token, isLoading } = useAuth();
   const [users, setUsers] = useState<Row[]>([]);
   const [sortBy, setSortBy] = useState<'username' | 'totalHours' | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  // Récupère les candidatures en attente
   useEffect(() => {
     if (isLoading) return;
-    // Simple règle: seul un utilisateur listé en admin peut voir: stockez un champ isAdmin sur son doc
+    setAppLoading(true);
+    const fetchApplications = async () => {
+      try {
+        const db = getFirestoreDb();
+        const q = query(collection(db, 'jobApplications'), where('status', '==', 'pending'));
+        const snap = await getDocsFirestore(q);
+        const apps: JobApplication[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication));
+        setApplications(apps);
+        setAppLoading(false);
+      } catch {
+        setAppError('Erreur lors du chargement des candidatures');
+        setAppLoading(false);
+      }
+    };
+    fetchApplications();
+  }, [isLoading]);
+
+  // Accepter/refuser une candidature
+  const handleAppStatus = async (id: string, status: 'accepted' | 'refused') => {
+    try {
+      const db = getFirestoreDb();
+      // Récupérer la demande pour avoir jobId et userId
+      const appDoc = await getDoc(doc(db, 'jobApplications', id));
+      if (!appDoc.exists()) throw new Error('Demande introuvable');
+      const appData = appDoc.data();
+      await updateDoc(doc(db, 'jobApplications', id), { status });
+      // Si accepté, créer l'application validée dans la sous-collection du job
+      if (status === 'accepted') {
+        const { setDoc } = await import('firebase/firestore');
+        await setDoc(doc(db, `jobs/${appData.jobId}/applications/${appData.userId}`), {
+          userId: appData.userId,
+          email: appData.email,
+          displayName: appData.displayName,
+          appliedAt: appData.appliedAt,
+          approved: true
+        });
+      }
+      setApplications(applications => applications.filter(app => app.id !== id));
+    } catch {
+      alert('Erreur lors de la mise à jour du statut.');
+    }
+  };
+
+  // Récupère les utilisateurs et heures prestées
+  useEffect(() => {
+    if (isLoading) return;
     (async () => {
       try {
         if (!user) throw new Error('Accès interdit');
-  const db = getFirestoreDb();
-  const me = await getDoc(doc(db, 'users', user.uid));
+        const db = getFirestoreDb();
+        const me = await getDoc(doc(db, 'users', user.uid));
         const isAdmin = me.exists() && me.data().isAdmin === true;
         if (!isAdmin) throw new Error('Accès interdit');
-
-  const usersCol = collection(db, 'users');
+        const usersCol = collection(db, 'users');
         const snap = await getDocs(usersCol);
         const rows: Row[] = [];
         type UserDoc = { displayName?: string | null; email?: string | null; totalHours?: number; isAdmin?: boolean };
@@ -134,7 +192,6 @@ const AdminPage: React.FC = () => {
       <table style={styles.table}>
         <thead>
           <tr>
-            <th style={styles.thInactive}>ID</th>
             <th
               style={{
                 ...styles.th,
@@ -143,7 +200,7 @@ const AdminPage: React.FC = () => {
               }}
               onClick={() => handleSort('username')}
             >
-              Nom d'utilisateur {sortBy === 'username' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
+              Totem {sortBy === 'username' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
             </th>
             <th
               style={{
@@ -160,13 +217,42 @@ const AdminPage: React.FC = () => {
         <tbody>
           {sortedUsers.map((u) => (
             <tr key={u.id}>
-              <td style={styles.td}>{u.id}</td>
               <td style={styles.td}>{u.username}</td>
               <td style={styles.td}>{u.totalHours}</td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      <h2 style={{...styles.h2, marginTop: 40}}>Demandes de candidature en attente</h2>
+      {appLoading ? <div>Chargement des candidatures...</div> : appError ? <div>{appError}</div> : (
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.thInactive}>Job</th>
+              <th style={styles.thInactive}>Utilisateur</th>
+              <th style={styles.thInactive}>Email</th>
+              <th style={styles.thInactive}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {applications.length === 0 && (
+              <tr><td colSpan={4} style={styles.td}>Aucune demande en attente</td></tr>
+            )}
+            {applications.map(app => (
+              <tr key={app.id}>
+                <td style={styles.td}>{app.jobTitle}</td>
+                <td style={styles.td}>{app.displayName}</td>
+                <td style={styles.td}>{app.email}</td>
+                <td style={styles.td}>
+                  <button style={{ background: '#2e7d32', color: 'white', border: 'none', borderRadius: 6, padding: '0.5rem 1rem', marginRight: 8, cursor: 'pointer' }} onClick={() => handleAppStatus(app.id, 'accepted')}>Accepter</button>
+                  <button style={{ background: '#c62828', color: 'white', border: 'none', borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer' }} onClick={() => handleAppStatus(app.id, 'refused')}>Refuser</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 };

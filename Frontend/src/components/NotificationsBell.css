@@ -1,0 +1,11 @@
+.notif-bell-wrapper { position: relative; display: inline-block; }
+.notif-bell-btn { background:none; border:none; cursor:pointer; padding:4px; position:relative; }
+.notif-badge { position:absolute; top:0; right:0; background:#e53935; color:#fff; border-radius:12px; font-size:11px; line-height:1; padding:2px 5px; font-weight:600; }
+.notif-panel { position:absolute; top:120%; right:0; background:#fff; box-shadow:0 4px 18px rgba(0,0,0,.15); border-radius:10px; width:320px; max-height:420px; overflow-y:auto; z-index:1500; padding:8px 0; }
+.notif-item { padding:10px 14px; border-bottom:1px solid #eee; font-size:.9rem; display:flex; flex-direction:column; gap:4px; }
+.notif-item:last-child { border-bottom:none; }
+.notif-item.unread { background:#f5f7ff; }
+.notif-item time { font-size:.7rem; color:#666; text-transform:uppercase; letter-spacing:.5px; }
+.notif-empty { padding:24px; text-align:center; color:#666; font-size:.85rem; }
+.notif-mark-all { display:flex; justify-content:space-between; align-items:center; padding:6px 12px 8px; border-bottom:1px solid #eee; }
+.notif-mark-all button { background:none; border:none; color:#646cff; font-size:.75rem; cursor:pointer; font-weight:600; }

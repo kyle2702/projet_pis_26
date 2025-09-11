@@ -1,0 +1,6 @@
+node_modules
+lib
+.eslintcache
+.env
+.env.local
+.env.*.local
