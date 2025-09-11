@@ -45,6 +45,21 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+// Middleware auth simple: vérifie uniquement l'ID token et expose req.uid
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  try {
+    const auth = req.headers.authorization || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : undefined;
+    if (!token) return res.status(401).json({ error: 'No token' });
+    const decoded = await admin.auth().verifyIdToken(token);
+    (req as any).uid = decoded.uid;
+    next();
+  } catch (e) {
+    console.error('Auth error', e);
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
 async function getAllTokens(): Promise<Array<{ userId: string; token: string }>> {
   const snap = await db.collection('fcmTokens').get();
   const list: { userId: string; token: string }[] = [];
@@ -127,9 +142,12 @@ app.post('/notify/new-job', requireAdmin, async (req: Request, res: Response) =>
 });
 
 // Notification aux admins lorsqu'un utilisateur postule
-app.post('/notify/new-application', requireAdmin, async (req: Request, res: Response) => {
+app.post('/notify/new-application', requireAuth, async (req: Request, res: Response) => {
   const { jobId, jobTitle, applicantId, applicantName } = req.body || {};
   if (!jobId || !jobTitle || !applicantId) return res.status(400).json({ error: 'Missing fields' });
+  // L'appelant doit correspondre au candidat
+  const callerUid = (req as any).uid as string;
+  if (callerUid !== applicantId) return res.status(403).json({ error: 'Forbidden' });
   const link = `/jobs?jobId=${encodeURIComponent(jobId)}`;
   try {
     const tokens = await getAdminTokens();

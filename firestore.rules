@@ -20,10 +20,11 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
       // Sous-collection applications (candidatures validées)
       match /applications/{appId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.auth.uid == appId; // chaque user crée sa propre candidature validée
-        allow delete: if isAdmin();
-        allow update: if false; // verrouiller modifications directes
+  allow read: if isSignedIn();
+  // Création autorisée soit par l'utilisateur pour lui-même, soit par un admin (validation)
+  allow create: if (isSignedIn() && request.auth.uid == appId) || isAdmin();
+  allow delete: if isAdmin();
+  allow update: if false; // verrouiller modifications directes
       }
     }
 
