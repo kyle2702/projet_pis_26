@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { collection, getDocs, doc, getDoc, addDoc, serverTimestamp, getCountFromServer } from 'firebase/firestore';
+import { getFirebaseAuth } from '../firebase/config';
 import { getFirestoreDb } from '../firebase/config';
 
 // Types
@@ -206,11 +207,39 @@ const JobsPage: React.FC = () => {
                 return;
               }
               const db = getFirestoreDb();
-              await addDoc(collection(db, 'jobs'), {
+              const newJobRef = await addDoc(collection(db, 'jobs'), {
                 ...form,
                 places: Number(form.places),
                 createdAt: serverTimestamp(),
               });
+              // Appeler le backend de notification (meilleur effort, sans bloquer l'ajout)
+              try {
+                const apiUrl = import.meta.env.VITE_NOTIFY_API_URL as string | undefined;
+                if (apiUrl) {
+                  const auth = getFirebaseAuth();
+                  const idToken = await auth.currentUser?.getIdToken();
+                  const payload = {
+                    jobId: newJobRef.id,
+                    title: form.title,
+                    dateBegin: form['date-begin'],
+                    dateEnd: form['date-end'],
+                    adress: form.adress,
+                    description: form.description,
+                    remuneration: form.remuneration,
+                    places: Number(form.places)
+                  };
+                  await fetch(`${apiUrl.replace(/\/$/, '')}/notify/new-job`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
+                    },
+                    body: JSON.stringify(payload)
+                  }).catch(() => {});
+                }
+              } catch (e) {
+                console.warn('Notification email backend failed (ignored):', e);
+              }
               setShowForm(false);
               setForm({ title: '', 'date-begin': '', 'date-end': '', adress: '', description: '', remuneration: '', places: 1 });
               setFormError(null);
