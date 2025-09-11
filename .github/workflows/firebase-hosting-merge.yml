@@ -11,7 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm run build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Frontend deps
+        run: npm ci
+        working-directory: Frontend
+      - name: Build Frontend
+        run: npm run build
+        working-directory: Frontend
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
