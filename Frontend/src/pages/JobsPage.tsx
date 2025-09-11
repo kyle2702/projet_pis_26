@@ -336,6 +336,29 @@ const JobsPage: React.FC = () => {
                           appliedAt: serverTimestamp(),
                           status: 'pending'
                         });
+                        // Notifier les admins (best-effort)
+                        try {
+                          const apiUrl = import.meta.env.VITE_NOTIFY_API_URL as string | undefined;
+                          if (apiUrl) {
+                            const auth = getFirebaseAuth();
+                            const idToken = await auth.currentUser?.getIdToken();
+                            await fetch(`${apiUrl.replace(/\/$/, '')}/notify/new-application`, {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
+                              },
+                              body: JSON.stringify({
+                                jobId: job.id,
+                                jobTitle: job.title,
+                                applicantId: user.uid,
+                                applicantName: displayName
+                              })
+                            }).catch(() => {});
+                          }
+                        } catch {
+                          // ignoré volontairement
+                        }
                         setUserApplications(a => ({ ...a, [job.id]: true }));
                         alert('Votre demande a été envoyée et est en attente de validation.');
                       } catch (e) {

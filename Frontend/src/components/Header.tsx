@@ -4,7 +4,6 @@ import { NavLink } from 'react-router-dom';
 import './Header.css';
 import { getFirestoreDb } from '../firebase/config';
 import { doc, getDoc } from 'firebase/firestore';
-import NotificationsBell from './NotificationsBell';
 
 const Header: React.FC = () => {
   const { user, logout } = useAuth();
@@ -81,7 +80,6 @@ const Header: React.FC = () => {
         )}
         <div className="header-logo-center" style={{ display:'flex', alignItems:'center', gap:16 }}>
           <img src="/pis.png" alt="Logo Pionnier" className="header-logo" />
-          {user && <NotificationsBell />}
         </div>
       </div>
     </header>

@@ -55,6 +55,23 @@ async function getAllTokens(): Promise<Array<{ userId: string; token: string }>>
   return list;
 }
 
+async function getAdminTokens(): Promise<Array<{ userId: string; token: string }>> {
+  // Récupère les UID des admins
+  const adminsSnap = await db.collection('users').where('isAdmin', '==', true).get();
+  const adminIds = new Set<string>();
+  adminsSnap.forEach(d => adminIds.add(d.id));
+  if (adminIds.size === 0) return [];
+  // Pour chaque admin, récupérer son token dans fcmTokens/{uid}
+  const list: { userId: string; token: string }[] = [];
+  const reads = Array.from(adminIds).map(async (uid) => {
+    const ref = await db.collection('fcmTokens').doc(uid).get();
+    const token = ref.exists ? (ref.data() as any)?.token as string | undefined : undefined;
+    if (token) list.push({ userId: uid, token });
+  });
+  await Promise.all(reads);
+  return list;
+}
+
 app.post('/notify/new-job', requireAdmin, async (req: Request, res: Response) => {
   const { jobId, title, description } = req.body || {};
   if (!jobId || !title) return res.status(400).json({ error: 'Missing jobId/title' });
@@ -105,6 +122,63 @@ app.post('/notify/new-job', requireAdmin, async (req: Request, res: Response) =>
     return res.json({ ok: true });
   } catch (e: any) {
     console.error('notify/new-job error', e);
+    return res.status(500).json({ error: 'Internal error' });
+  }
+});
+
+// Notification aux admins lorsqu'un utilisateur postule
+app.post('/notify/new-application', requireAdmin, async (req: Request, res: Response) => {
+  const { jobId, jobTitle, applicantId, applicantName } = req.body || {};
+  if (!jobId || !jobTitle || !applicantId) return res.status(400).json({ error: 'Missing fields' });
+  const link = `/jobs?jobId=${encodeURIComponent(jobId)}`;
+  try {
+    const tokens = await getAdminTokens();
+    if (tokens.length === 0) return res.json({ ok: true, sent: 0 });
+
+    // Écrit une notification Firestore (type: new_application) pour chaque admin
+    const batch = db.batch();
+    const createdAt = admin.firestore.FieldValue.serverTimestamp();
+    tokens.forEach(({ userId }) => {
+      const ref = db.collection('notifications').doc();
+      batch.set(ref, {
+        userId,
+        type: 'new_application',
+        jobId,
+        title: `Nouvelle candidature: ${jobTitle}`,
+        description: applicantName ? `${applicantName} a postulé.` : 'Un utilisateur a postulé.',
+        createdAt,
+        readBy: [],
+      });
+    });
+    await batch.commit();
+
+    // Push FCM uniquement aux admins
+    const tokenList = tokens.map(t => t.token);
+    const resp = await admin.messaging().sendEachForMulticast({
+      tokens: tokenList,
+      notification: {
+        title: 'Nouvelle candidature',
+        body: `${applicantName ? applicantName + ' a p' : 'Un utilisateur a p'}ostulé: ${jobTitle}`,
+      },
+      data: { link, jobId, jobTitle, applicantId, applicantName: String(applicantName || '') },
+      webpush: { fcmOptions: { link } },
+    });
+
+    // Cleanup tokens invalides
+    const invalidCodes = new Set(['messaging/invalid-registration-token', 'messaging/registration-token-not-registered']);
+    const toDelete = resp.responses
+      .map((r: any, i: number) => (!r.success && r.error && invalidCodes.has((r.error as any).code) ? tokenList[i] : null))
+      .filter(Boolean) as string[];
+    if (toDelete.length) {
+      const snap = await db.collection('fcmTokens').where('token', 'in', toDelete).get();
+      const cleanup = db.batch();
+      snap.forEach((d) => cleanup.delete(d.ref));
+      await cleanup.commit();
+    }
+
+    return res.json({ ok: true, sent: tokenList.length });
+  } catch (e) {
+    console.error('notify/new-application error', e);
     return res.status(500).json({ error: 'Internal error' });
   }
 });

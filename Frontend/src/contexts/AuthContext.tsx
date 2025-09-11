@@ -70,21 +70,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.warn('Impossible de créer/mettre à jour le profil utilisateur:', e);
         }
 
-        // Init FCM (meilleur effort)
+        // Init FCM (meilleur effort) + demande de permission si nécessaire
         try {
-          await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-          await initMessagingAndGetToken(u.uid);
-          unsubMsg = await listenForegroundMessages((payload) => {
-            // Optionnel: toast/alert minimal pour les messages au premier plan
-            const title = payload.notification?.title || payload.data?.title;
-            const body = payload.notification?.body || payload.data?.body;
-            if (title) {
-              // Utiliser une UI plus propre si dispo
-              console.info('Notification:', title, body);
+          const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+          console.info('SW registered for FCM:', swReg.scope);
+          let allowed = false;
+          if (typeof Notification !== 'undefined') {
+            if (Notification.permission === 'granted') {
+              allowed = true;
+            } else if (Notification.permission === 'default') {
+              const res = await Notification.requestPermission().catch(() => 'denied');
+              allowed = res === 'granted';
+            } else {
+              console.info('Notifications bloquées par le navigateur (denied).');
             }
-          });
+          }
+          if (allowed) {
+            const tok = await initMessagingAndGetToken(u.uid);
+            console.info('FCM token presence:', !!tok);
+            unsubMsg = await listenForegroundMessages((payload) => {
+              const title = payload.notification?.title || payload.data?.title;
+              const body = payload.notification?.body || payload.data?.body;
+              if (title) console.info('Notification:', title, body);
+            });
+          } else {
+            console.info('Permission notifications non accordée; token non enregistré.');
+          }
         } catch (e) {
-          console.info('FCM non initialisé (permission refusée ou non supporté).', e);
+          console.info('FCM non initialisé (permission refusée / non supporté / SW).', e);
         }
       } else {
         setUser(null);

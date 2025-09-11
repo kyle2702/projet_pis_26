@@ -1,0 +1,189 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const cors_1 = __importDefault(require("cors"));
+const firebase_admin_1 = __importDefault(require("firebase-admin"));
+// Variables d'env attendues:
+// - GOOGLE_APPLICATION_CREDENTIALS (chemin vers json service account) OU FIREBASE_CONFIG via initApp default creds
+// - FIREBASE_PROJECT_ID (facultatif si dans creds)
+if (!firebase_admin_1.default.apps.length) {
+    const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    if (json) {
+        const creds = JSON.parse(json);
+        firebase_admin_1.default.initializeApp({ credential: firebase_admin_1.default.credential.cert(creds) });
+    }
+    else {
+        // Par défaut: variables d'env Google (GOOGLE_APPLICATION_CREDENTIALS) ou métadonnées
+        firebase_admin_1.default.initializeApp();
+    }
+}
+const db = firebase_admin_1.default.firestore();
+const app = (0, express_1.default)();
+app.use((0, cors_1.default)());
+app.use(express_1.default.json());
+// Endpoints de santé pour Render
+app.get('/', (_req, res) => res.status(200).send('notify-api ok'));
+app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
+// Middleware auth: vérifie l'ID token et isAdmin
+async function requireAdmin(req, res, next) {
+    try {
+        const auth = req.headers.authorization || '';
+        const token = auth.startsWith('Bearer ') ? auth.slice(7) : undefined;
+        if (!token)
+            return res.status(401).json({ error: 'No token' });
+        const decoded = await firebase_admin_1.default.auth().verifyIdToken(token);
+        const uid = decoded.uid;
+        const userDoc = await db.collection('users').doc(uid).get();
+        if (!userDoc.exists || userDoc.data()?.isAdmin !== true) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        req.uid = uid;
+        next();
+    }
+    catch (e) {
+        console.error('Auth error', e);
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+}
+async function getAllTokens() {
+    const snap = await db.collection('fcmTokens').get();
+    const list = [];
+    snap.forEach((doc) => {
+        const token = doc.data()?.token;
+        if (token)
+            list.push({ userId: doc.id, token });
+    });
+    return list;
+}
+async function getAdminTokens() {
+    // Récupère les UID des admins
+    const adminsSnap = await db.collection('users').where('isAdmin', '==', true).get();
+    const adminIds = new Set();
+    adminsSnap.forEach(d => adminIds.add(d.id));
+    if (adminIds.size === 0)
+        return [];
+    // Pour chaque admin, récupérer son token dans fcmTokens/{uid}
+    const list = [];
+    const reads = Array.from(adminIds).map(async (uid) => {
+        const ref = await db.collection('fcmTokens').doc(uid).get();
+        const token = ref.exists ? ref.data()?.token : undefined;
+        if (token)
+            list.push({ userId: uid, token });
+    });
+    await Promise.all(reads);
+    return list;
+}
+app.post('/notify/new-job', requireAdmin, async (req, res) => {
+    const { jobId, title, description } = req.body || {};
+    if (!jobId || !title)
+        return res.status(400).json({ error: 'Missing jobId/title' });
+    const link = `/jobs?jobId=${encodeURIComponent(jobId)}`;
+    try {
+        const tokens = await getAllTokens();
+        // Notifications Firestore
+        const batch = db.batch();
+        const createdAt = firebase_admin_1.default.firestore.FieldValue.serverTimestamp();
+        tokens.forEach(({ userId }) => {
+            const ref = db.collection('notifications').doc();
+            batch.set(ref, {
+                userId,
+                type: 'new_job',
+                jobId,
+                title: `Nouveau job: ${title}`,
+                description: description || '',
+                createdAt,
+                readBy: [],
+            });
+        });
+        await batch.commit();
+        // Push FCM
+        const tokenList = tokens.map(t => t.token);
+        if (tokenList.length) {
+            const resp = await firebase_admin_1.default.messaging().sendEachForMulticast({
+                tokens: tokenList,
+                notification: {
+                    title: 'Nouveau job disponible',
+                    body: String(title),
+                },
+                data: { link, jobId, title: String(title) },
+                webpush: { fcmOptions: { link } },
+            });
+            // Cleanup tokens invalides
+            const invalidCodes = new Set(['messaging/invalid-registration-token', 'messaging/registration-token-not-registered']);
+            const toDelete = resp.responses
+                .map((r, i) => (!r.success && r.error && invalidCodes.has(r.error.code) ? tokenList[i] : null))
+                .filter(Boolean);
+            if (toDelete.length) {
+                const snap = await db.collection('fcmTokens').where('token', 'in', toDelete).get();
+                const cleanup = db.batch();
+                snap.forEach((d) => cleanup.delete(d.ref));
+                await cleanup.commit();
+            }
+        }
+        return res.json({ ok: true });
+    }
+    catch (e) {
+        console.error('notify/new-job error', e);
+        return res.status(500).json({ error: 'Internal error' });
+    }
+});
+// Notification aux admins lorsqu'un utilisateur postule
+app.post('/notify/new-application', requireAdmin, async (req, res) => {
+    const { jobId, jobTitle, applicantId, applicantName } = req.body || {};
+    if (!jobId || !jobTitle || !applicantId)
+        return res.status(400).json({ error: 'Missing fields' });
+    const link = `/jobs?jobId=${encodeURIComponent(jobId)}`;
+    try {
+        const tokens = await getAdminTokens();
+        if (tokens.length === 0)
+            return res.json({ ok: true, sent: 0 });
+        // Écrit une notification Firestore (type: new_application) pour chaque admin
+        const batch = db.batch();
+        const createdAt = firebase_admin_1.default.firestore.FieldValue.serverTimestamp();
+        tokens.forEach(({ userId }) => {
+            const ref = db.collection('notifications').doc();
+            batch.set(ref, {
+                userId,
+                type: 'new_application',
+                jobId,
+                title: `Nouvelle candidature: ${jobTitle}`,
+                description: applicantName ? `${applicantName} a postulé.` : 'Un utilisateur a postulé.',
+                createdAt,
+                readBy: [],
+            });
+        });
+        await batch.commit();
+        // Push FCM uniquement aux admins
+        const tokenList = tokens.map(t => t.token);
+        const resp = await firebase_admin_1.default.messaging().sendEachForMulticast({
+            tokens: tokenList,
+            notification: {
+                title: 'Nouvelle candidature',
+                body: `${applicantName ? applicantName + ' a p' : 'Un utilisateur a p'}ostulé: ${jobTitle}`,
+            },
+            data: { link, jobId, jobTitle, applicantId, applicantName: String(applicantName || '') },
+            webpush: { fcmOptions: { link } },
+        });
+        // Cleanup tokens invalides
+        const invalidCodes = new Set(['messaging/invalid-registration-token', 'messaging/registration-token-not-registered']);
+        const toDelete = resp.responses
+            .map((r, i) => (!r.success && r.error && invalidCodes.has(r.error.code) ? tokenList[i] : null))
+            .filter(Boolean);
+        if (toDelete.length) {
+            const snap = await db.collection('fcmTokens').where('token', 'in', toDelete).get();
+            const cleanup = db.batch();
+            snap.forEach((d) => cleanup.delete(d.ref));
+            await cleanup.commit();
+        }
+        return res.json({ ok: true, sent: tokenList.length });
+    }
+    catch (e) {
+        console.error('notify/new-application error', e);
+        return res.status(500).json({ error: 'Internal error' });
+    }
+});
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`notify-api listening on :${port}`));

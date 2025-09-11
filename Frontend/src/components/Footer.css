@@ -1,10 +1,25 @@
 .footer {
   background-color: #1a1a1a;
-  padding: 1rem;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.87);
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100%;
+  padding: 0.5rem 0.75rem; /* plus compact */
+  text-align: center; /* texte centré */
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.85rem; /* plus petit */
+  line-height: 1.2;
+  box-sizing: border-box;
+  /* Pleine largeur (full-bleed), même si #root est centré */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.footer p {
+  margin: 4px 0; /* supprimer l’espace vertical superflu */
+}
+
+@media (max-width: 480px) {
+  .footer {
+    padding: 0.5rem; /* un peu plus compact sur mobile */
+    font-size: 0.8rem;
+  }
 }

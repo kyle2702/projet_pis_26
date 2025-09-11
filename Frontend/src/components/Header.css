@@ -107,3 +107,42 @@
   pointer-events: none; /* Désactive le clic */
   cursor: default; /* Curseur par défaut */
 }
+
+/* --- Responsive --- */
+@media (max-width: 768px) {
+  .header {
+    padding: 0.75rem 1rem;
+  }
+
+  .header-logo {
+    height: 48px;
+    margin-left: 12px;
+  }
+
+  .header-logo-center {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .nav-link {
+    margin: 0 10px;
+    font-size: 1rem;
+    padding: 4px 6px;
+  }
+}
+
+@media (max-width: 420px) {
+  .header {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .header-logo {
+    height: 40px;
+    margin-left: 8px;
+  }
+
+  .nav-link {
+    margin: 0 6px;
+    font-size: 0.95rem;
+  }
+}
