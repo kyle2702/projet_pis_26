@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import './Header.css';
 import { getFirestoreDb } from '../firebase/config';
 import { doc, getDoc } from 'firebase/firestore';
 
 const Header: React.FC = () => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -53,15 +54,16 @@ const Header: React.FC = () => {
             {/* Bouton de déconnexion */}
               {user ? (
                 <>
-                <NavLink to="/hours" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')} onClick={() => setMenuOpen(false)} style={{ display: 'block', padding: '0.7rem 2rem' }}>Mes heures</NavLink>
+                <NavLink to="/profile" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')} onClick={() => setMenuOpen(false)} style={{ display: 'block', padding: '0.7rem 2rem' }}>Profil</NavLink>
 
                   <button
-                    onClick={async () => {
+          onClick={async () => {
                       setMenuOpen(false);
                       try {
                         await logout();
+            navigate('/', { replace: true });
                       } catch {
-                        window.location.href = '/';
+            window.location.href = '/';
                       }
                     }}
                     className="nav-link logout-btn"

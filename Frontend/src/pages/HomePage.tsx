@@ -65,13 +65,16 @@ const HomePage: React.FC = () => {
       display: 'flex',
       flexDirection: 'column',
       gap: '1rem',
-      width: '100%',
-      maxWidth: '400px',
+      width: 'fit-content',
+      minWidth: '280px',
+      maxWidth: '90vw',
       padding: '2rem',
       border: '1px solid #e0e0e0',
       borderRadius: '8px',
       backgroundColor: '#fdfdfd',
       boxShadow: '0 4px 8px rgba(0, 0, 0, 0.05)',
+      alignItems: 'center',
+      margin: '0 auto'
     },
     formGroup: {
       display: 'flex',
@@ -88,6 +91,7 @@ const HomePage: React.FC = () => {
       border: '1px solid #ccc',
       borderRadius: '4px',
       fontSize: '1rem',
+      width: '280px'
     },
     button: {
       padding: '0.75rem',

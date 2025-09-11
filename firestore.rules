@@ -30,8 +30,13 @@ service cloud.firestore {
 
     // Table des demandes de candidatures (pending -> admin approuve) jobApplications
     match /jobApplications/{docId} {
-      allow create: if isSignedIn();
-      allow read: if isAdmin() || request.auth.uid == resource.data.userId;
+      // Un utilisateur peut créer UNE candidature par job, avec un ID déterministe {jobId}_{uid}
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && docId == (request.resource.data.jobId + "_" + request.auth.uid)
+        && !exists(/databases/$(database)/documents/jobApplications/$(docId));
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.userId);
+      // Seul l'admin peut modifier/supprimer (ex: changer status -> accepted/refused)
       allow update, delete: if isAdmin();
     }
 

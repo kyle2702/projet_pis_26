@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, doc, getDoc, getDocs, getDocs as getDocsFirestore, updateDoc, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, getDocs as getDocsFirestore, updateDoc, query, where, Timestamp } from 'firebase/firestore';
 import { getFirestoreDb } from '../firebase/config';
 
 interface Row {
@@ -100,7 +100,7 @@ const AdminPage: React.FC = () => {
     }
   };
 
-  // Récupère les utilisateurs et heures prestées
+  // Récupère les utilisateurs et calcule les heures prestées à partir des jobs passés
   useEffect(() => {
     if (isLoading) return;
     (async () => {
@@ -110,18 +110,133 @@ const AdminPage: React.FC = () => {
         const me = await getDoc(doc(db, 'users', user.uid));
         const isAdmin = me.exists() && me.data().isAdmin === true;
         if (!isAdmin) throw new Error('Accès interdit');
-        const usersCol = collection(db, 'users');
-        const snap = await getDocs(usersCol);
-        const rows: Row[] = [];
-        type UserDoc = { displayName?: string | null; email?: string | null; totalHours?: number; isAdmin?: boolean };
-        for (const d of snap.docs) {
-          const data = d.data() as UserDoc;
-          rows.push({
-            id: d.id,
-            username: data.displayName || data.email || d.id,
-            totalHours: typeof data.totalHours === 'number' ? data.totalHours : 0,
-          });
+
+        // 1) Charger les users pour disposer des noms/emails
+        const usersSnap = await getDocs(collection(db, 'users'));
+        const userMeta = new Map<string, { username: string; email?: string | null; displayName?: string | null }>();
+        const emailToUid = new Map<string, string>();
+        const nameToUid = new Map<string, string>(); // displayName normalisé -> uid
+        usersSnap.forEach(d => {
+          const data = d.data() as { displayName?: string | null; email?: string | null };
+          const username = data.displayName || data.email || d.id;
+          userMeta.set(d.id, { username, email: data.email ?? null, displayName: data.displayName ?? null });
+          if (data.email) emailToUid.set(String(data.email).toLowerCase(), d.id);
+          if (data.displayName) nameToUid.set(String(data.displayName).trim().toLowerCase(), d.id);
+        });
+
+        // 2) Charger tous les jobs et filtrer ceux dont la fin est passée
+        const jobsSnap = await getDocs(collection(db, 'jobs'));
+        type JobDoc = { ['date-begin']?: string | Timestamp; ['date-end']?: string | Timestamp };
+        const now = Date.now();
+        function parseDdMmYyyy(s: string): number | undefined {
+          // ex: "31/08/2025 09:30" ou "31/08/2025"
+          const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[ T](\d{2}):(\d{2}))?$/);
+          if (!m) return undefined;
+          const dd = Number(m[1]);
+          const mm = Number(m[2]);
+          const yyyy = Number(m[3]);
+          const HH = m[4] ? Number(m[4]) : 0;
+          const MM = m[5] ? Number(m[5]) : 0;
+          const d = new Date(yyyy, mm - 1, dd, HH, MM, 0, 0); // local time
+          const t = d.getTime();
+          return Number.isNaN(t) ? undefined : t;
         }
+        function parseIsoLocal(s: string): number | undefined {
+          // ex: "2025-09-11T09:30" ou "2025-09-11 09:30"
+          const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+          if (!m) return undefined;
+          const yyyy = Number(m[1]);
+          const mm = Number(m[2]);
+          const dd = Number(m[3]);
+          const HH = Number(m[4]);
+          const MM = Number(m[5]);
+          const SS = m[6] ? Number(m[6]) : 0;
+          const d = new Date(yyyy, mm - 1, dd, HH, MM, SS, 0); // local time
+          const t = d.getTime();
+          return Number.isNaN(t) ? undefined : t;
+        }
+        function toEpoch(val: unknown): number | undefined {
+          if (!val) return undefined;
+          if (typeof val === 'string') {
+            // Supporter explicitement ISO local, puis fallback dd/mm
+            const tIso = parseIsoLocal(val);
+            if (tIso !== undefined) return tIso;
+            const tDdMm = parseDdMmYyyy(val);
+            if (tDdMm !== undefined) return tDdMm;
+            // dernier recours: Date(val) si le navigateur sait parser
+            const t = new Date(val).getTime();
+            return Number.isNaN(t) ? undefined : t;
+          }
+          if (val instanceof Timestamp) { return val.toMillis(); }
+          return undefined;
+        }
+
+        const pastJobs: Array<{ id: string; start?: number; end?: number }> = [];
+        jobsSnap.forEach(d => {
+          const data = d.data() as JobDoc;
+          const start = toEpoch(data['date-begin']);
+          const end = toEpoch(data['date-end']);
+          if (end !== undefined && end < now && start !== undefined) {
+            pastJobs.push({ id: d.id, start, end });
+          }
+        });
+
+        // 3) Parcourir les participants validés de chaque job passé et sommer les heures
+        const totals = new Map<string, number>(); // uid -> heures cumulées
+        for (const j of pastJobs) {
+          // Calcul à la minute près pour éviter les imprécisions de flottants
+          const diffMs = (j.end ?? 0) - (j.start ?? 0);
+          const minutes = diffMs > 0 ? Math.round(diffMs / 60000) : 0;
+          const durationHours = minutes / 60;
+          try {
+            const appsSnap = await getDocs(collection(db, `jobs/${j.id}/applications`));
+            interface ApprovedApplication { userId?: string; email?: string; displayName?: string }
+            appsSnap.forEach(p => {
+              const app = p.data() as ApprovedApplication;
+              let uid: string | undefined = undefined;
+              // 1) userId direct
+              if (app.userId && userMeta.has(app.userId)) uid = app.userId;
+              // 2) via email
+              if (!uid && app.email) {
+                const viaEmail = emailToUid.get(String(app.email).toLowerCase());
+                if (viaEmail) uid = viaEmail;
+              }
+              // 3) via displayName
+              if (!uid && app.displayName) {
+                const viaName = nameToUid.get(String(app.displayName).trim().toLowerCase());
+                if (viaName) uid = viaName;
+              }
+              // 4) via docId (si docId est déjà l'uid, un email, ou un nom)
+              if (!uid) {
+                const pid = p.id;
+                if (userMeta.has(pid)) uid = pid;
+                if (!uid) {
+                  const viaEmailPid = emailToUid.get(String(pid).toLowerCase());
+                  if (viaEmailPid) uid = viaEmailPid;
+                }
+                if (!uid) {
+                  const viaNamePid = nameToUid.get(String(pid).trim().toLowerCase());
+                  if (viaNamePid) uid = viaNamePid;
+                }
+              }
+              const finalUid = uid ?? p.id;
+              totals.set(finalUid, (totals.get(finalUid) || 0) + durationHours);
+            });
+          } catch {
+            // ignorer
+          }
+        }
+
+        // 4) Construire les lignes pour TOUS les utilisateurs (0 heure par défaut si rien validé)
+        const rows: Row[] = Array.from(userMeta.entries()).map(([uid, meta]) => {
+          const hours = totals.get(uid) || 0;
+          return {
+            id: uid,
+            username: meta.username,
+            totalHours: Number(hours.toFixed(2)),
+          };
+        });
+
         setUsers(rows);
         setLoading(false);
       } catch (e) {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { collection, getDocs, doc, getDoc, addDoc, serverTimestamp, getCountFromServer } from 'firebase/firestore';
 import { getFirebaseAuth } from '../firebase/config';
@@ -18,7 +18,8 @@ const JobsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [applications, setApplications] = useState<Record<string, number>>({}); // jobId -> count
-  const [userApplications, setUserApplications] = useState<Record<string, boolean>>({}); // jobId -> a postulé ?
+  const [userApplications, setUserApplications] = useState<Record<string, boolean>>({}); // jobId -> a postulé/pendant ?
+  const [userPendingApps, setUserPendingApps] = useState<Record<string, boolean>>({}); // jobId -> pending
   const [applyLoading, setApplyLoading] = useState<string | null>(null); // jobId en cours de postulation
   const [isAdmin, setIsAdmin] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -33,6 +34,7 @@ const JobsPage: React.FC = () => {
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [formLoading, setFormLoading] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
@@ -57,8 +59,9 @@ const JobsPage: React.FC = () => {
       const jobsCol = collection(db, 'jobs');
       const snap = await getDocs(jobsCol);
       const list: Job[] = [];
-      const appCounts: Record<string, number> = {};
-      const userApps: Record<string, boolean> = {};
+  const appCounts: Record<string, number> = {};
+  const userApps: Record<string, boolean> = {};
+  const userPending: Record<string, boolean> = {};
       const participantsMap: JobParticipants = {};
 
       function toDateString(val: unknown): string {
@@ -120,6 +123,12 @@ const JobsPage: React.FC = () => {
           } catch {
             userApps[jobId] = false;
           }
+          try {
+            const pendingSnap = await getDoc(doc(db, 'jobApplications', `${jobId}_${user.uid}`));
+            userPending[jobId] = pendingSnap.exists() && (pendingSnap.data()?.status === 'pending');
+          } catch {
+            userPending[jobId] = false;
+          }
         }
 
         // Participants (admin uniquement)
@@ -146,7 +155,8 @@ const JobsPage: React.FC = () => {
 
       setJobs(list);
       setApplications(appCounts);
-      setUserApplications(userApps);
+  setUserApplications(userApps);
+  setUserPendingApps(userPending);
       if (isAdmin) setJobParticipants(participantsMap);
       setFetchError(null);
     } catch (e) {
@@ -183,7 +193,7 @@ const JobsPage: React.FC = () => {
   }, [location.search]);
 
   return (
-    <div style={{ maxWidth: 700, margin: '2rem auto', padding: '1rem' }}>
+    <div style={{ maxWidth: 400, margin: '2rem auto', padding: '1rem' }}>
       <h1>Jobs disponibles</h1>
       {isAdmin && !showForm && (
         <button
@@ -193,8 +203,16 @@ const JobsPage: React.FC = () => {
           Ajouter un job
         </button>
       )}
+      {isAdmin && (
+        <button
+          style={{ marginLeft: 12, marginBottom: 24, background: '#888', color: 'white', border: 'none', borderRadius: 8, padding: '0.7rem 1.2rem', fontSize: '0.95rem', cursor: 'pointer' }}
+          onClick={() => navigate('/history')}
+        >
+          Historique
+        </button>
+      )}
       {isAdmin && showForm && (
-        <form
+  <form
           onSubmit={async (e) => {
             e.preventDefault();
             setFormError(null);
@@ -253,16 +271,16 @@ const JobsPage: React.FC = () => {
             }
           }}
           style={{
-            display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: 24, background: '#f9f9ff', border: '1px solid #ccc', borderRadius: 10, padding: '1.5rem', boxShadow: '0 2px 8px rgba(100,108,255,0.07)'
+            display: 'flex', flexDirection: 'column', gap: '1rem', margin: '0 auto 24px', background: '#f9f9ff', border: '1px solid #ccc', borderRadius: 10, padding: '1.5rem', boxShadow: '0 2px 8px rgba(100,108,255,0.07)', width: 'fit-content', maxWidth: '90vw', alignItems: 'center'
           }}
         >
-          <input type="text" placeholder="Titre" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required />
-          <input type="datetime-local" placeholder="Début" value={form['date-begin']} onChange={e => setForm(f => ({ ...f, ['date-begin']: e.target.value }))} required />
-          <input type="datetime-local" placeholder="Fin" value={form['date-end']} onChange={e => setForm(f => ({ ...f, ['date-end']: e.target.value }))} required />
-          <input type="text" placeholder="Adresse" value={form.adress} onChange={e => setForm(f => ({ ...f, adress: e.target.value }))} required />
-          <textarea placeholder="Description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required />
-          <input type="text" placeholder="Rémunération (ex: 8€/h ou 300€)" value={form.remuneration} onChange={e => setForm(f => ({ ...f, remuneration: e.target.value }))} required />
-          <input type="number" min={1} placeholder="Places (nombre de pionniers nécessaires)" value={form.places} onChange={e => setForm(f => ({ ...f, places: Number(e.target.value) }))} required />
+          <input style={{ width: 320 }} type="text" placeholder="Titre" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required />
+          <input style={{ width: 320 }} type="datetime-local" placeholder="Début" value={form['date-begin']} onChange={e => setForm(f => ({ ...f, ['date-begin']: e.target.value }))} required />
+          <input style={{ width: 320 }} type="datetime-local" placeholder="Fin" value={form['date-end']} onChange={e => setForm(f => ({ ...f, ['date-end']: e.target.value }))} required />
+          <input style={{ width: 320 }} type="text" placeholder="Adresse" value={form.adress} onChange={e => setForm(f => ({ ...f, adress: e.target.value }))} required />
+          <textarea style={{ width: 320 }} placeholder="Description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required />
+          <input style={{ width: 320 }} type="text" placeholder="Rémunération (ex: 8€/h ou 300€)" value={form.remuneration} onChange={e => setForm(f => ({ ...f, remuneration: e.target.value }))} required />
+          <input style={{ width: 320 }} type="number" min={1} placeholder="Places (nombre de pionniers nécessaires)" value={form.places} onChange={e => setForm(f => ({ ...f, places: Number(e.target.value) }))} required />
           {formError && <div style={{ color: 'red' }}>{formError}</div>}
           <div style={{ display: 'flex', gap: 12 }}>
             <button type="submit" disabled={formLoading} style={{ background: '#646cff', color: 'white', border: 'none', borderRadius: 8, padding: '0.7rem 1.5rem', fontSize: '1rem', cursor: 'pointer' }}>Valider</button>
@@ -271,16 +289,30 @@ const JobsPage: React.FC = () => {
         </form>
       )}
   {fetchError && <div style={{ color: 'red', marginBottom: 16 }}>{fetchError}</div>}
-  {loading ? <div>Chargement...</div> : jobs.length === 0 ? <div>Aucun job disponible.</div> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-          {jobs.map(job => {
+  {loading ? <div>Chargement...</div> : (() => {
+        const now = Date.now();
+  const upcoming = jobs.filter(j => (j.dateBeginSort ?? Number.POSITIVE_INFINITY) >= now);
+        if (upcoming.length === 0 && !isAdmin) return <div>Aucun job disponible.</div>;
+        return (
+        <>
+  <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.5rem',
+              alignItems: 'center',
+              width: '100%'
+            }}
+          >
+          {upcoming.map(job => {
             // Participants (admin)
             const participants = isAdmin ? (jobParticipants[job.id] || []) : [];
             const nbApplications = applications[job.id] || 0;
             const placesRestantes = Math.max(0, job.places - nbApplications);
             const dejaPostule = userApplications[job.id];
+            const pending = userPendingApps[job.id];
             return (
-                  <div
+          <div
                     key={job.id}
                     id={`job-${job.id}`}
                     style={{
@@ -291,15 +323,23 @@ const JobsPage: React.FC = () => {
                       boxShadow: '0 2px 8px rgba(100,108,255,0.07)',
                       color: '#222',
                       position: 'relative',
-                      transition: 'background .4s, border-color .4s'
+            transition: 'background .4s, border-color .4s',
+            width: '100%',
+            minHeight: 220,
+            display: 'flex',
+            flexDirection: 'column'
                     }}
                   >
                 <h2 style={{ margin: 0, color: '#222', fontWeight: 700 }}>{job.title && job.title.trim() ? job.title : 'Sans titre'}</h2>
                 <div style={{ color: '#646cff', fontWeight: 600, marginBottom: 8 }}>
                   {job['date-begin']} — {job['date-end']}
                 </div>
-                <div style={{ marginBottom: 8 }}><span style={{ fontWeight: 600, color: '#222' }}>Adresse :</span> {job.adress}</div>
-                <div style={{ marginBottom: 8 }}><span style={{ fontWeight: 600, color: '#222' }}>Description :</span> {job.description}</div>
+                <div style={{ marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <span style={{ fontWeight: 600, color: '#222' }}>Adresse :</span> {job.adress}
+                </div>
+                <div style={{ marginBottom: 8, lineHeight: '1.4em', maxHeight: '4.2em', overflow: 'hidden' }}>
+                  <span style={{ fontWeight: 600, color: '#222' }}>Description :</span> {job.description}
+                </div>
                 <div style={{ marginBottom: 8 }}><span style={{ fontWeight: 600, color: '#222' }}>Rémunération :</span> {job.remuneration}</div>
                 <div style={{ marginBottom: 8 }}><span style={{ fontWeight: 600, color: '#222' }}>Places restantes :</span> {placesRestantes}/{job.places}</div>
                     {!user && (
@@ -307,9 +347,9 @@ const JobsPage: React.FC = () => {
                         Connectez-vous pour postuler à ce job
                       </div>
                     )}
-                {user && !isAdmin && !dejaPostule && placesRestantes > 0 && (
+                {user && !isAdmin && !dejaPostule && !pending && placesRestantes > 0 && (
                   <button
-                    style={{ background: '#646cff', color: 'white', border: 'none', borderRadius: 8, padding: '0.7rem 1.5rem', fontSize: '1rem', cursor: 'pointer', marginTop: 8 }}
+                    style={{ background: '#646cff', color: 'white', border: 'none', borderRadius: 8, padding: '0.7rem 1.5rem', fontSize: '1rem', cursor: 'pointer', marginTop: 'auto' }}
                     disabled={applyLoading === job.id}
                     onClick={async () => {
                       setApplyLoading(job.id);
@@ -327,7 +367,9 @@ const JobsPage: React.FC = () => {
                         }
                         if (!displayName) displayName = user.email || 'Utilisateur inconnu';
                         // Ajoute une demande d'approbation dans jobApplications
-                        await addDoc(collection(db, 'jobApplications'), {
+                        const appDocId = `${job.id}_${user.uid}`;
+                        const { setDoc } = await import('firebase/firestore');
+                        await setDoc(doc(db, 'jobApplications', appDocId), {
                           jobId: job.id,
                           jobTitle: job.title,
                           userId: user.uid,
@@ -335,7 +377,7 @@ const JobsPage: React.FC = () => {
                           displayName,
                           appliedAt: serverTimestamp(),
                           status: 'pending'
-                        });
+                        }, { merge: false });
                         // Notifier les admins (best-effort)
                         try {
                           const apiUrl = import.meta.env.VITE_NOTIFY_API_URL as string | undefined;
@@ -359,7 +401,8 @@ const JobsPage: React.FC = () => {
                         } catch {
                           // ignoré volontairement
                         }
-                        setUserApplications(a => ({ ...a, [job.id]: true }));
+                        // Rester en attente jusqu'à validation admin
+                        setUserPendingApps(a => ({ ...a, [job.id]: true }));
                         alert('Votre demande a été envoyée et est en attente de validation.');
                       } catch (e) {
                         alert('Erreur lors de la postulation.');
@@ -373,7 +416,10 @@ const JobsPage: React.FC = () => {
                   </button>
                 )}
                 {user && dejaPostule && (
-                  <div style={{ color: '#2e7d32', fontWeight: 600, marginTop: 8 }}>Vous avez postulé</div>
+                  <div style={{ color: '#2e7d32', fontWeight: 700, marginTop: 8 }}>Candidature acceptée</div>
+                )}
+                {user && !dejaPostule && pending && (
+                  <div style={{ color: '#ff8f00', fontWeight: 600, marginTop: 8 }}>Votre demande est en attente</div>
                 )}
                 {placesRestantes === 0 && (
                   <div style={{ color: '#c62828', fontWeight: 600, marginTop: 8 }}>Complet</div>
@@ -387,7 +433,10 @@ const JobsPage: React.FC = () => {
             );
           })}
         </div>
-      )}
+  {/* Historique déplacé sur page dédiée */}
+        </>
+        );
+      })()}
     </div>
   );
 };

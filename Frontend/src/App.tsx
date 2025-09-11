@@ -3,9 +3,10 @@ import { Suspense, lazy } from 'react';
 import './App.css';
 import Layout from './components/Layout';
 const HomePage = lazy(() => import('./pages/HomePage'));
-const HourPage = lazy(() => import('./pages/HourPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const JobsPage = lazy(() => import('./pages/JobsPage'));
+const HistoryPage = lazy(() => import('./pages/HistoryPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 
 import { AuthProvider } from './contexts/AuthContext';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -24,8 +25,12 @@ const router = createBrowserRouter([
         element: <JobsPage />,
       },
       {
-        path: 'hours',
-        element: <HourPage />,
+        path: 'history',
+        element: <HistoryPage />,
+      },
+      {
+        path: 'profile',
+        element: <ProfilePage />,
       },
       {
         path: 'admin',

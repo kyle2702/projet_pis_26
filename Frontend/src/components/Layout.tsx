@@ -1,9 +1,20 @@
-import React from 'react';
-import { Outlet } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Header from './Header';
 import Footer from './Footer';
+import { useAuth } from '../contexts/AuthContext';
 
 const Layout: React.FC = () => {
+  const { user, isLoading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !user && location.pathname !== '/') {
+      navigate('/', { replace: true });
+    }
+  }, [user, isLoading, location.pathname, navigate]);
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', width: '100%' }}>
       <Header />
