@@ -43,6 +43,15 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Jetons FCM (enregistrés côté client par l'utilisateur)
+    match /fcmTokens/{userId} {
+      allow read: if isUser(userId) || isAdmin();
+      // L'utilisateur peut créer/mettre à jour son propre document de jetons
+      allow create, update: if isUser(userId);
+      // Suppression autorisée pour l'utilisateur (ex. logout) ou admin
+      allow delete: if isUser(userId) || isAdmin();
+    }
+
     // Fallback deny
     match /{document=**} {
       allow read, write: if false;
