@@ -4,13 +4,26 @@
 try {
   importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
   importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
-  // Initialisation auto fournie par Firebase Hosting (disponible en production)
+  // En production (Firebase Hosting), ce script initialise automatiquement l'app
   importScripts('/__/firebase/init.js?useEmulator=false');
 } catch (e) {
-  // En dev local (Vite), ce script d'init n'est pas disponible: on ignore.
+  // En dev local (Vite), ce script n'existe pas: on passe en mode dégradé.
 }
 
-const messaging = firebase.messaging.isSupported() ? firebase.messaging() : null;
+let messaging = null;
+try {
+  const hasFirebase = typeof firebase !== 'undefined' && !!firebase;
+  const isSupported = hasFirebase && firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported();
+  const isInitialized = hasFirebase && firebase.apps && firebase.apps.length > 0;
+  if (hasFirebase && isSupported && isInitialized) {
+    messaging = firebase.messaging();
+  } else {
+    // Ne pas casser le SW en dev local si Firebase n'est pas initialisé
+    // console.log('[SW] Firebase Messaging non initialisé (dev local or unsupported).');
+  }
+} catch (err) {
+  // console.warn('[SW] Erreur d\'initialisation de Messaging', err);
+}
 
 if (messaging) {
   messaging.onBackgroundMessage((payload) => {

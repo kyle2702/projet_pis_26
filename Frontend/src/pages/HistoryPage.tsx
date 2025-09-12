@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { getFirestoreDb } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,6 +8,7 @@ interface Job { id: string; title: string; 'date-begin': string; 'date-end': str
 
 const HistoryPage: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [participants, setParticipants] = useState<Record<string, string[]>>({});
@@ -101,19 +103,75 @@ const HistoryPage: React.FC = () => {
   if (error) return <div style={{ padding: 24 }}>{error}</div>;
 
   return (
-    <div style={{ maxWidth: 900, margin: '2rem auto', padding: '1rem' }}>
-      <h1>Historique des jobs</h1>
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'center', alignItems: 'flex-start' }}>
+    <div style={{ maxWidth: 400, margin: '2rem auto', padding: '1rem', position: 'relative' }}>
+      <a
+       
+        onClick={(e) => { e.preventDefault(); navigate('/jobs'); }}
+        aria-label="Retour à la page des jobs"
+        title="left arrow icons"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          position: 'fixed',
+          top: 95,
+          left: 8,
+          borderRadius: 8,
+          padding: '6px 8px',
+          cursor: 'pointer',
+            zIndex: 900,
+          color: '#222',
+          textDecoration: 'none',
+          lineHeight: 1,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 32,
+          height: 32
+        }}
+      >
+        <img src="/back-button.png" alt="Retour" style={{ width: 35, height: 35, display: 'block' }} />
+      </a>
+      <h1 style={{ marginTop: 0, textAlign: 'center' }}>Historique des jobs</h1>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1.5rem',
+          alignItems: 'center',
+          width: '100%'
+        }}
+      >
         {jobs.map(job => (
-      <div key={job.id} style={{ border: '1px solid #ddd', borderRadius: 10, padding: '1rem', background: '#fff', color: '#222', display:'inline-block', textAlign:'center', width:'fit-content', maxWidth: 'min(92vw, 420px)', margin: '0 auto' }}>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: 8 }}>{job.title || 'Sans titre'}</div>
-            <div style={{ color: '#555', marginBottom: 6 }}>{job['date-begin']} — {job['date-end']}</div>
-            <div style={{ marginBottom: 6 }}><span style={{ fontWeight: 600 }}>Adresse :</span> {job.adress}</div>
-            <div style={{ marginBottom: 6 }}><span style={{ fontWeight: 600 }}>Description :</span> {job.description}</div>
-            <div style={{ marginBottom: 6 }}><span style={{ fontWeight: 600 }}>Rémunération :</span> {job.remuneration}</div>
-            <div style={{ marginBottom: 6 }}><span style={{ fontWeight: 600 }}>Places :</span> {job.places}</div>
-            <div>
-              <span style={{ fontWeight: 700, color: '#646cff' }}>Participants :</span> {participants[job.id]?.length ? participants[job.id].join(', ') : 'Aucun'}
+          <div
+            key={job.id}
+            style={{
+              border: '1px solid #bbb',
+              borderRadius: 10,
+              padding: '1.5rem',
+              background: '#fff',
+              boxShadow: '0 2px 8px rgba(100,108,255,0.07)',
+              color: '#222',
+              position: 'relative',
+              transition: 'background .4s, border-color .4s',
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+          >
+            <h2 style={{ margin: 0, color: '#222', fontWeight: 700 }}>{job.title || 'Sans titre'}</h2>
+            <div style={{ color: '#646cff', fontWeight: 600, marginBottom: 8 }}>
+              {job['date-begin']} — {job['date-end']}
+            </div>
+            <div style={{ marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <span style={{ fontWeight: 600, color: '#222' }}>Adresse :</span> {job.adress}
+            </div>
+            <div style={{ marginBottom: 8, lineHeight: '1.4em', maxHeight: '4.2em', overflow: 'hidden' }}>
+              <span style={{ fontWeight: 600, color: '#222' }}>Description :</span> {job.description}
+            </div>
+            <div style={{ marginBottom: 8 }}><span style={{ fontWeight: 600, color: '#222' }}>Rémunération :</span> {job.remuneration}</div>
+            <div style={{ marginBottom: 8 }}><span style={{ fontWeight: 600, color: '#222' }}>Places :</span> {job.places}</div>
+            <div style={{ marginTop: 'auto', paddingTop: 8, borderTop: '1px solid #eee', color: '#222', fontWeight: 500, fontSize: '.95rem' }}>
+              <span style={{ color: '#646cff', fontWeight: 700 }}>Participants :</span> {participants[job.id]?.length ? participants[job.id].join(', ') : 'Aucun'}
             </div>
           </div>
         ))}

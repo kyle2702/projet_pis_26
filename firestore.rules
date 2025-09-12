@@ -28,6 +28,12 @@ service cloud.firestore {
       }
     }
 
+    // Meetings: lecture pour utilisateurs connectés, modifications réservées aux admins
+    match /meetings/{meetingId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
     // Table des demandes de candidatures (pending -> admin approuve) jobApplications
     match /jobApplications/{docId} {
       // Un utilisateur peut créer UNE candidature par job, avec un ID déterministe {jobId}_{uid}

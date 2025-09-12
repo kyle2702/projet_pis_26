@@ -7,6 +7,7 @@ const AdminPage = lazy(() => import('./pages/AdminPage'));
 const JobsPage = lazy(() => import('./pages/JobsPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 
 import { AuthProvider } from './contexts/AuthContext';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -27,6 +28,10 @@ const router = createBrowserRouter([
       {
         path: 'history',
         element: <HistoryPage />,
+      },
+      {
+        path: 'calendar',
+        element: <CalendarPage />,
       },
       {
         path: 'profile',
