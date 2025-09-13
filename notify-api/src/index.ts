@@ -107,12 +107,22 @@ async function getAllWebPushSubs(): Promise<Array<{ userId: string; subscription
   return out;
 }
 
+// Construit un nid stable pour un type d'événement
+function buildNid(kind: 'new_job'|'new_application'|'application_accepted', id: string) {
+  return `${kind}:${id}`;
+}
+
 app.post('/notify/new-job', requireAdmin, async (req: Request, res: Response) => {
   const { jobId, title, description } = req.body || {};
   if (!jobId || !title) return res.status(400).json({ error: 'Missing jobId/title' });
   const link = `/jobs?jobId=${encodeURIComponent(jobId)}`;
   try {
-    const tokens = await getAllTokens();
+  const tokens = await getAllTokens();
+  const subs = WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY ? await getAllWebPushSubs() : [];
+  // Construire un envoi exclusif par utilisateur: si sub Web Push existe => prioriser Web Push (retirer du lot FCM)
+  const usersWithWebPush = new Set(subs.map(s => s.userId));
+  const fcmTokensFiltered = tokens.filter(t => !usersWithWebPush.has(t.userId));
+  const nid = buildNid('new_job', String(jobId));
     // Notifications Firestore
     const batch = db.batch();
     const createdAt = admin.firestore.FieldValue.serverTimestamp();
@@ -131,15 +141,11 @@ app.post('/notify/new-job', requireAdmin, async (req: Request, res: Response) =>
     await batch.commit();
 
   // Push FCM
-    const tokenList = tokens.map(t => t.token);
+  const tokenList = fcmTokensFiltered.map(t => t.token);
     if (tokenList.length) {
-  const resp = await admin.messaging().sendEachForMulticast({
+      const resp = await admin.messaging().sendEachForMulticast({
         tokens: tokenList,
-        notification: {
-          title: 'Nouveau job disponible',
-          body: String(title),
-        },
-        data: { link, jobId, title: String(title) },
+        data: { link, jobId, title: String(title), nid },
         webpush: { fcmOptions: { link } },
       });
       // Cleanup tokens invalides
@@ -155,10 +161,8 @@ app.post('/notify/new-job', requireAdmin, async (req: Request, res: Response) =>
       }
     }
     // Web Push (iOS/Safari et navigateurs compatibles)
-    if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
-      const subs = await getAllWebPushSubs();
-      if (subs.length) {
-        const payload = JSON.stringify({ title: 'Nouveau job disponible', body: String(title), link });
+    if (subs.length) {
+        const payload = JSON.stringify({ title: 'Nouveau job disponible', body: String(title), link, nid });
         const results = await Promise.allSettled(subs.map(({ subscription }) => webpush.sendNotification(subscription, payload)));
         const toDelete: string[] = [];
         results.forEach((r, i) => {
@@ -174,7 +178,6 @@ app.post('/notify/new-job', requireAdmin, async (req: Request, res: Response) =>
           await batch.commit();
         }
       }
-    }
     return res.json({ ok: true });
   } catch (e: any) {
     console.error('notify/new-job error', e);
@@ -190,9 +193,22 @@ app.post('/notify/new-application', requireAuth, async (req: Request, res: Respo
   const callerUid = (req as any).uid as string;
   if (callerUid !== applicantId) return res.status(403).json({ error: 'Forbidden' });
   const link = `/jobs?jobId=${encodeURIComponent(jobId)}`;
+  const nid = buildNid('new_application', String(jobId));
   try {
     const tokens = await getAdminTokens();
-    if (tokens.length === 0) return res.json({ ok: true, sent: 0 });
+    // Récupérer les subs Web Push des admins
+    const adminsSnap = await db.collection('users').where('isAdmin', '==', true).get();
+    const subs: Array<{ userId: string; subscription: PushSubscription }> = [];
+    if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
+      await Promise.all(adminsSnap.docs.map(async (d) => {
+        const subDoc = await db.collection('webPushSubs').doc(d.id).get();
+        const sub = subDoc.exists ? (subDoc.data() as any)?.subscription as PushSubscription | undefined : undefined;
+        if (sub) subs.push({ userId: d.id, subscription: sub });
+      }));
+    }
+    if (tokens.length === 0 && subs.length === 0) return res.json({ ok: true, sent: 0 });
+    const usersWithWebPush = new Set(subs.map(s => s.userId));
+    const fcmTokensFiltered = tokens.filter(t => !usersWithWebPush.has(t.userId));
 
     // Écrit une notification Firestore (type: new_application) pour chaque admin
     const batch = db.batch();
@@ -212,14 +228,10 @@ app.post('/notify/new-application', requireAuth, async (req: Request, res: Respo
     await batch.commit();
 
     // Push FCM uniquement aux admins
-    const tokenList = tokens.map(t => t.token);
+    const tokenList = fcmTokensFiltered.map(t => t.token);
     const resp = await admin.messaging().sendEachForMulticast({
       tokens: tokenList,
-      notification: {
-        title: 'Nouvelle candidature',
-        body: `${applicantName ? applicantName + ' a p' : 'Un utilisateur a p'}ostulé: ${jobTitle}`,
-      },
-      data: { link, jobId, jobTitle, applicantId, applicantName: String(applicantName || '') },
+      data: { link, jobId, jobTitle, applicantId, applicantName: String(applicantName || ''), nid },
       webpush: { fcmOptions: { link } },
     });
 
@@ -236,19 +248,13 @@ app.post('/notify/new-application', requireAuth, async (req: Request, res: Respo
     }
 
     // Web Push vers les admins
-    if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
-      const adminsSnap = await db.collection('users').where('isAdmin', '==', true).get();
-      const subs: Array<{ userId: string; subscription: PushSubscription }> = [];
-      await Promise.all(adminsSnap.docs.map(async (d) => {
-        const subDoc = await db.collection('webPushSubs').doc(d.id).get();
-        const sub = subDoc.exists ? (subDoc.data() as any)?.subscription as PushSubscription | undefined : undefined;
-        if (sub) subs.push({ userId: d.id, subscription: sub });
-      }));
+  if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
       if (subs.length) {
         const payload = JSON.stringify({
           title: 'Nouvelle candidature',
           body: `${applicantName ? applicantName + ' a p' : 'Un utilisateur a p'}ostulé: ${jobTitle}`,
           link,
+          nid,
         });
         const results = await Promise.allSettled(subs.map(({ subscription }) => webpush.sendNotification(subscription, payload)));
         const toDelete: string[] = [];
@@ -278,10 +284,14 @@ app.post('/notify/application-accepted', requireAdmin, async (req: Request, res:
   const { jobId, jobTitle, applicantId, applicantName } = req.body || {};
   if (!jobId || !jobTitle || !applicantId) return res.status(400).json({ error: 'Missing fields' });
   const link = `/jobs?jobId=${encodeURIComponent(jobId)}`;
+  const nid = buildNid('application_accepted', String(jobId));
   try {
     // Token du candidat
     const tokenDoc = await db.collection('fcmTokens').doc(applicantId).get();
     const token = tokenDoc.exists ? (tokenDoc.data() as any)?.token as string | undefined : undefined;
+    // Subscription Web Push du candidat
+    const subDoc = WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY ? await db.collection('webPushSubs').doc(applicantId).get() : null;
+    const sub: PushSubscription | undefined = subDoc && subDoc.exists ? (subDoc.data() as any)?.subscription as PushSubscription | undefined : undefined;
     // Écrire notification Firestore (type: application_accepted)
     const createdAt = admin.firestore.FieldValue.serverTimestamp();
     await db.collection('notifications').add({
@@ -293,31 +303,26 @@ app.post('/notify/application-accepted', requireAdmin, async (req: Request, res:
       createdAt,
       readBy: [],
     });
-    // Push FCM au candidat
-    if (token) {
+  // Push FCM au candidat (si pas déjà Web Push)
+    if (token && !sub) {
       await admin.messaging().send({
         token,
-        notification: {
-          title: 'Candidature acceptée',
-          body: `Votre candidature a été acceptée: ${jobTitle}`,
-        },
-        data: { link, jobId, jobTitle },
+        data: { link, jobId, jobTitle, nid },
         webpush: { fcmOptions: { link } },
       });
     }
-    // Web Push au candidat
-    if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
-      const subDoc = await db.collection('webPushSubs').doc(applicantId).get();
-      const sub = subDoc.exists ? (subDoc.data() as any)?.subscription as PushSubscription | undefined : undefined;
-      if (sub) {
+  // Web Push au candidat
+  if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
+    if (sub) {
         await webpush.sendNotification(sub, JSON.stringify({
           title: 'Candidature acceptée',
           body: `Votre candidature a été acceptée: ${jobTitle}`,
-          link,
+      link,
+      nid,
         }));
       }
     }
-    return res.json({ ok: true, sent: token ? 1 : 0 });
+  return res.json({ ok: true, sent: (token && !sub ? 1 : 0) + (sub ? 1 : 0) });
   } catch (e) {
     console.error('notify/application-accepted error', e);
     return res.status(500).json({ error: 'Internal error' });

@@ -11,6 +11,20 @@ try {
 }
 
 let messaging = null;
+// Déduplication simple en mémoire (cycle de vie court du SW):
+const RECENT = new Set();
+function makeTag({ nid, title, body, url }) {
+  if (nid) return String(nid).slice(0, 128);
+  return `tag:${title || ''}|${body || ''}|${url || ''}`.slice(0, 128);
+}
+function shouldShowOnce(tag) {
+  if (!tag) return true;
+  if (RECENT.has(tag)) return false;
+  RECENT.add(tag);
+  // Purge après 15s
+  setTimeout(() => RECENT.delete(tag), 15000);
+  return true;
+}
 try {
   const hasFirebase = typeof firebase !== 'undefined' && !!firebase;
   const isSupported = hasFirebase && firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported();
@@ -30,12 +44,20 @@ if (messaging) {
     const title = payload.notification?.title || payload.data?.title || 'Nouvelle notification';
     const body = payload.notification?.body || payload.data?.body || '';
     const clickUrl = payload.fcmOptions?.link || payload.data?.link || '/';
+  const nid = payload.data?.nid || payload.notification?.tag;
+  const tag = makeTag({ nid, title, body, url: clickUrl });
+    if (!shouldShowOnce(tag)) return;
     const options = {
       body,
       icon: '/vite.svg',
       data: { url: clickUrl },
+      tag,
+      renotify: false,
     };
-    self.registration.showNotification(title, options);
+    self.registration.getNotifications({ includeTriggered: true }).then(list => {
+      list.filter(n => n.tag === tag).forEach(n => n.close());
+      self.registration.showNotification(title, options);
+    });
   });
 
   self.addEventListener('notificationclick', function (event) {
@@ -62,12 +84,22 @@ self.addEventListener('push', (event) => {
     const title = data.title || (data.notification && data.notification.title) || 'Notification';
     const body = data.body || (data.notification && data.notification.body) || '';
     const clickUrl = data.link || (data.data && data.data.link) || '/';
+  const nid = data.nid || (data.notification && data.notification.tag);
+  const tag = makeTag({ nid, title, body, url: clickUrl });
+    if (!shouldShowOnce(tag)) return;
     const options = {
       body,
       icon: '/vite.svg',
       data: { url: clickUrl },
+      tag,
+      renotify: false,
     };
-    event.waitUntil(self.registration.showNotification(title, options));
+    event.waitUntil(
+      self.registration.getNotifications({ includeTriggered: true }).then(list => {
+        list.filter(n => n.tag === tag).forEach(n => n.close());
+        return self.registration.showNotification(title, options);
+      })
+    );
   } catch (e) {
     // Données non JSON, afficher un titre par défaut
     event.waitUntil(self.registration.showNotification('Notification', { body: '', icon: '/vite.svg' }));

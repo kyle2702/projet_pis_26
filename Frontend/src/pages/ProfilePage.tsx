@@ -3,6 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { collection, doc, getDoc, getDocs, Timestamp } from 'firebase/firestore';
 import { getFirestoreDb, getFirebaseAuth, getGoogleProvider } from '../firebase/config';
 import { reauthenticateWithCredential, EmailAuthProvider, updatePassword, fetchSignInMethodsForEmail, reauthenticateWithPopup } from 'firebase/auth';
+import { initMessagingAndGetToken } from '../firebase/messaging';
+import { isWebPushSupported, subscribeWebPush } from '../webpush';
 
 type Job = { id: string; title?: string; ['date-begin']?: string | Timestamp; ['date-end']?: string | Timestamp; adress?: string };
 
@@ -55,10 +57,13 @@ function fmtDate(val: unknown): string {
 }
 
 const ProfilePage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, token: idToken } = useAuth();
   const [jobs, setJobs] = useState<Array<{ id:string; title:string; begin:string; end:string; minutes:number }>>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [notifMsg, setNotifMsg] = useState<string | null>(null);
+  const [notifBusy, setNotifBusy] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | 'unsupported'>('default');
 
   // Password form state
   const [oldPwd, setOldPwd] = useState('');
@@ -83,6 +88,16 @@ const ProfilePage: React.FC = () => {
     })();
     return () => { cancelled = true; };
   }, [user?.email]);
+
+  // Détecter l'état des notifications pour afficher/masquer le bouton
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      setNotifPermission('unsupported');
+      return;
+    }
+    setNotifPermission(Notification.permission);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +156,53 @@ const ProfilePage: React.FC = () => {
   input: { width: 'min(320px, 90vw)', padding: '0.6rem', borderRadius: 8, border:'1px solid #ccc' },
     btn: { background:'#646cff', color:'#fff', border:'none', borderRadius:8, padding:'0.6rem 1rem', cursor:'pointer' }
   };
+
+  async function handleEnableNotifications() {
+    setNotifMsg(null);
+    if (!user) { setNotifMsg('Veuillez vous connecter.'); return; }
+    if (notifPermission === 'unsupported') { setNotifMsg('Notifications non supportées sur cet appareil.'); return; }
+    try {
+      setNotifBusy(true);
+      // S'assurer que le SW est prêt
+  try { await navigator.serviceWorker.register('/firebase-messaging-sw.js'); } catch { /* noop */ }
+      const current = Notification.permission;
+      if (current === 'denied') {
+        setNotifMsg('Notifications refusées. Activez-les dans Réglages/Paramètres puis réessayez.');
+        return;
+      }
+      let granted = current === 'granted';
+      if (!granted) {
+        const res: NotificationPermission = await Notification.requestPermission().catch(() => 'denied' as NotificationPermission);
+        granted = res === 'granted';
+        setNotifPermission(res);
+        if (!granted) {
+          setNotifMsg('Permission non accordée.');
+          return;
+        }
+      }
+      // D'abord tenter FCM (Android/Chrome)
+      const fcmTok = await initMessagingAndGetToken(user.uid);
+      if (fcmTok) {
+        setNotifMsg('Notifications activées (FCM).');
+        setNotifPermission('granted');
+        return;
+      }
+      // Sinon fallback Web Push
+      if (isWebPushSupported()) {
+        if (!idToken) {
+          setNotifMsg('Session invalide, reconnectez-vous.');
+          return;
+        }
+        const ok = await subscribeWebPush(user.uid, idToken);
+        setNotifMsg(ok ? 'Notifications activées (Web Push).' : "Impossible d'activer les notifications (Web Push).");
+        if (ok) setNotifPermission('granted');
+      } else {
+        setNotifMsg('Notifications non supportées sur ce navigateur.');
+      }
+    } finally {
+      setNotifBusy(false);
+    }
+  }
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -235,6 +297,26 @@ const ProfilePage: React.FC = () => {
           </table>
         )}
       </section>
+
+      {notifPermission !== 'unsupported' && (
+        <section style={styles.section}>
+          <h2 style={{ marginTop:0 }}>Notifications</h2>
+          {notifPermission === 'granted' ? (
+            <div>Notifications déjà activées.</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
+              <div style={{ maxWidth: 420 }}>Activez les notifications pour recevoir les alertes des nouveaux jobs et mises à jour.</div>
+              <button style={styles.btn} onClick={handleEnableNotifications} disabled={notifBusy}>
+                {notifBusy ? 'Activation…' : 'Activer les notifications'}
+              </button>
+              {notifPermission === 'denied' && (
+                <div style={{ color:'#b71c1c', maxWidth: 420 }}>Notifications refusées dans le navigateur. Allez dans Réglages &gt; Notifications &gt; Pionniers 26 et activez-les.</div>
+              )}
+              {notifMsg && <div style={{ maxWidth: 420 }}>{notifMsg}</div>}
+            </div>
+          )}
+        </section>
+      )}
 
       <section style={styles.section}>
         <h2 style={{ marginTop:0 }}>Changer mon mot de passe</h2>
