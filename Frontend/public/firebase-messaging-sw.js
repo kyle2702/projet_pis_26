@@ -54,3 +54,22 @@ if (messaging) {
     );
   });
 }
+
+// Fallback Web Push standard (iOS/Safari, navigateurs sans FCM)
+self.addEventListener('push', (event) => {
+  try {
+    const data = event.data ? event.data.json() : {};
+    const title = data.title || (data.notification && data.notification.title) || 'Notification';
+    const body = data.body || (data.notification && data.notification.body) || '';
+    const clickUrl = data.link || (data.data && data.data.link) || '/';
+    const options = {
+      body,
+      icon: '/vite.svg',
+      data: { url: clickUrl },
+    };
+    event.waitUntil(self.registration.showNotification(title, options));
+  } catch (e) {
+    // Données non JSON, afficher un titre par défaut
+    event.waitUntil(self.registration.showNotification('Notification', { body: '', icon: '/vite.svg' }));
+  }
+});

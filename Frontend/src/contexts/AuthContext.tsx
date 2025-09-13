@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useRef } from 'react';
 import { getFirebaseAuth, getGoogleProvider, getFirestoreDb } from '../firebase/config';
 import {
   onAuthStateChanged,
@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { initMessagingAndGetToken, listenForegroundMessages } from '../firebase/messaging';
+import { isWebPushSupported, subscribeWebPush, unsubscribeWebPush } from '../webpush';
 
 type PublicUser = {
   uid: string;
@@ -44,6 +45,7 @@ function toPublicUser(u: FirebaseUser): PublicUser {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const tokenRef = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -57,6 +59,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(toPublicUser(u));
         const t = await getIdToken(u, /* forceRefresh */ true).catch(() => null);
         setToken(t);
+        tokenRef.current = t;
         // Upsert du document utilisateur minimal, sans écraser displayName existant par null
         try {
           const userDocRef = doc(d, 'users', u.uid);
@@ -88,20 +91,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (allowed) {
             const tok = await initMessagingAndGetToken(u.uid);
             console.info('FCM token presence:', !!tok);
-            unsubMsg = await listenForegroundMessages((payload) => {
-              const title = payload.notification?.title || payload.data?.title;
-              const body = payload.notification?.body || payload.data?.body;
-              if (title) console.info('Notification:', title, body);
-            });
+            if (tok) {
+              unsubMsg = await listenForegroundMessages((payload) => {
+                const title = payload.notification?.title || payload.data?.title;
+                const body = payload.notification?.body || payload.data?.body;
+                if (title) console.info('Notification:', title, body);
+              });
+            } else if (isWebPushSupported() && t) {
+              // Fallback Web Push pour iOS/Safari
+              const ok = await subscribeWebPush(u.uid, t);
+              console.info('Web Push subscription:', ok);
+            }
           } else {
-            console.info('Permission notifications non accordée; token non enregistré.');
+            console.info('Permission notifications non accordée; token/subscription non enregistrés.');
           }
         } catch (e) {
-          console.info('FCM non initialisé (permission refusée / non supporté / SW).', e);
+          console.info('FCM/Web Push non initialisé (permission refusée / non supporté / SW).', e);
         }
       } else {
+        // Déconnexion: nettoyage
+        const lastToken = tokenRef.current;
+        if (lastToken) {
+          try { await unsubscribeWebPush(lastToken); } catch { /* noop */ }
+        }
         setUser(null);
         setToken(null);
+        tokenRef.current = null;
         // Cleanup messaging listener
         try { unsubMsg?.(); } catch { /* noop */ }
       }

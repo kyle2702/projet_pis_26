@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const firebase_admin_1 = __importDefault(require("firebase-admin"));
+const web_push_1 = __importDefault(require("web-push"));
 // Variables d'env attendues:
 // - GOOGLE_APPLICATION_CREDENTIALS (chemin vers json service account) OU FIREBASE_CONFIG via initApp default creds
 // - FIREBASE_PROJECT_ID (facultatif si dans creds)
@@ -24,6 +25,13 @@ const db = firebase_admin_1.default.firestore();
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
+// Config Web Push (VAPID)
+const WEBPUSH_PUBLIC_KEY = process.env.WEBPUSH_PUBLIC_KEY;
+const WEBPUSH_PRIVATE_KEY = process.env.WEBPUSH_PRIVATE_KEY;
+const WEBPUSH_SUBJECT = process.env.WEBPUSH_SUBJECT || 'mailto:admin@example.com';
+if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
+    web_push_1.default.setVapidDetails(WEBPUSH_SUBJECT, WEBPUSH_PUBLIC_KEY, WEBPUSH_PRIVATE_KEY);
+}
 // Endpoints de santé pour Render
 app.get('/', (_req, res) => res.status(200).send('notify-api ok'));
 app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
@@ -92,6 +100,17 @@ async function getAdminTokens() {
     await Promise.all(reads);
     return list;
 }
+async function getAllWebPushSubs() {
+    const snap = await db.collection('webPushSubs').get();
+    const out = [];
+    snap.forEach((doc) => {
+        const d = doc.data();
+        const sub = d?.subscription;
+        if (sub)
+            out.push({ userId: doc.id, subscription: sub });
+    });
+    return out;
+}
 app.post('/notify/new-job', requireAdmin, async (req, res) => {
     const { jobId, title, description } = req.body || {};
     if (!jobId || !title)
@@ -137,6 +156,28 @@ app.post('/notify/new-job', requireAdmin, async (req, res) => {
                 const cleanup = db.batch();
                 snap.forEach((d) => cleanup.delete(d.ref));
                 await cleanup.commit();
+            }
+        }
+        // Web Push (iOS/Safari et navigateurs compatibles)
+        if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
+            const subs = await getAllWebPushSubs();
+            if (subs.length) {
+                const payload = JSON.stringify({ title: 'Nouveau job disponible', body: String(title), link });
+                const results = await Promise.allSettled(subs.map(({ subscription }) => web_push_1.default.sendNotification(subscription, payload)));
+                const toDelete = [];
+                results.forEach((r, i) => {
+                    if (r.status === 'rejected') {
+                        const err = r.reason;
+                        const code = err?.statusCode;
+                        if (code === 404 || code === 410)
+                            toDelete.push(subs[i].userId);
+                    }
+                });
+                if (toDelete.length) {
+                    const batch = db.batch();
+                    toDelete.forEach(uid => batch.delete(db.collection('webPushSubs').doc(uid)));
+                    await batch.commit();
+                }
             }
         }
         return res.json({ ok: true });
@@ -198,6 +239,39 @@ app.post('/notify/new-application', requireAuth, async (req, res) => {
             snap.forEach((d) => cleanup.delete(d.ref));
             await cleanup.commit();
         }
+        // Web Push vers les admins
+        if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
+            const adminsSnap = await db.collection('users').where('isAdmin', '==', true).get();
+            const subs = [];
+            await Promise.all(adminsSnap.docs.map(async (d) => {
+                const subDoc = await db.collection('webPushSubs').doc(d.id).get();
+                const sub = subDoc.exists ? subDoc.data()?.subscription : undefined;
+                if (sub)
+                    subs.push({ userId: d.id, subscription: sub });
+            }));
+            if (subs.length) {
+                const payload = JSON.stringify({
+                    title: 'Nouvelle candidature',
+                    body: `${applicantName ? applicantName + ' a p' : 'Un utilisateur a p'}ostulé: ${jobTitle}`,
+                    link,
+                });
+                const results = await Promise.allSettled(subs.map(({ subscription }) => web_push_1.default.sendNotification(subscription, payload)));
+                const toDelete = [];
+                results.forEach((r, i) => {
+                    if (r.status === 'rejected') {
+                        const err = r.reason;
+                        const code = err?.statusCode;
+                        if (code === 404 || code === 410)
+                            toDelete.push(subs[i].userId);
+                    }
+                });
+                if (toDelete.length) {
+                    const batch = db.batch();
+                    toDelete.forEach(uid => batch.delete(db.collection('webPushSubs').doc(uid)));
+                    await batch.commit();
+                }
+            }
+        }
         return res.json({ ok: true, sent: tokenList.length });
     }
     catch (e) {
@@ -238,10 +312,49 @@ app.post('/notify/application-accepted', requireAdmin, async (req, res) => {
                 webpush: { fcmOptions: { link } },
             });
         }
+        // Web Push au candidat
+        if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
+            const subDoc = await db.collection('webPushSubs').doc(applicantId).get();
+            const sub = subDoc.exists ? subDoc.data()?.subscription : undefined;
+            if (sub) {
+                await web_push_1.default.sendNotification(sub, JSON.stringify({
+                    title: 'Candidature acceptée',
+                    body: `Votre candidature a été acceptée: ${jobTitle}`,
+                    link,
+                }));
+            }
+        }
         return res.json({ ok: true, sent: token ? 1 : 0 });
     }
     catch (e) {
         console.error('notify/application-accepted error', e);
+        return res.status(500).json({ error: 'Internal error' });
+    }
+});
+// Enregistre une subscription Web Push pour l'utilisateur courant
+app.post('/webpush/subscribe', requireAuth, async (req, res) => {
+    try {
+        const uid = req.uid;
+        const { subscription } = req.body || {};
+        if (!subscription || !WEBPUSH_PUBLIC_KEY || !WEBPUSH_PRIVATE_KEY)
+            return res.status(400).json({ error: 'Missing subscription or VAPID config' });
+        await db.collection('webPushSubs').doc(uid).set({ subscription }, { merge: true });
+        return res.json({ ok: true });
+    }
+    catch (e) {
+        console.error('webpush/subscribe error', e);
+        return res.status(500).json({ error: 'Internal error' });
+    }
+});
+// Supprime la subscription Web Push de l'utilisateur courant
+app.post('/webpush/unsubscribe', requireAuth, async (req, res) => {
+    try {
+        const uid = req.uid;
+        await db.collection('webPushSubs').doc(uid).delete();
+        return res.json({ ok: true });
+    }
+    catch (e) {
+        console.error('webpush/unsubscribe error', e);
         return res.status(500).json({ error: 'Internal error' });
     }
 });
