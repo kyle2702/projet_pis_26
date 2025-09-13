@@ -1,5 +1,16 @@
 // Service worker Firebase Messaging pour recevoir des notifications en background
 // Doit se trouver dans /public à la racine du site
+// Version SW: v3
+
+self.addEventListener('install', (event) => {
+  // Activer immédiatement la nouvelle version
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  // Prendre le contrôle des pages ouvertes sans attendre un reload
+  event.waitUntil(self.clients.claim());
+});
 
 try {
   importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
@@ -41,8 +52,9 @@ try {
 
 if (messaging) {
   messaging.onBackgroundMessage((payload) => {
-    const title = payload.notification?.title || payload.data?.title || 'Nouvelle notification';
-    const body = payload.notification?.body || payload.data?.body || '';
+  // Préférer les champs data.* que nous contrôlons depuis notre backend
+  const title = payload.data?.title || payload.notification?.title || 'Nouvelle notification';
+  const body = payload.data?.body || payload.notification?.body || '';
     const clickUrl = payload.fcmOptions?.link || payload.data?.link || '/';
   const nid = payload.data?.nid || payload.notification?.tag;
   const tag = makeTag({ nid, title, body, url: clickUrl });
@@ -80,9 +92,22 @@ if (messaging) {
 // Fallback Web Push standard (iOS/Safari, navigateurs sans FCM)
 self.addEventListener('push', (event) => {
   try {
-    const data = event.data ? event.data.json() : {};
-    const title = data.title || (data.notification && data.notification.title) || 'Notification';
-    const body = data.body || (data.notification && data.notification.body) || '';
+    let data = {};
+    if (event.data) {
+      try {
+        data = event.data.json();
+      } catch (e) {
+        try {
+          const t = event.data.text();
+          data = JSON.parse(t);
+        } catch {
+          data = {};
+        }
+      }
+    }
+  // Même logique: préférer data.title/body
+  const title = (data && (data.title || (data.notification && data.notification.title))) || 'Notification';
+  const body = (data && (data.body || (data.notification && data.notification.body))) || '';
     const clickUrl = data.link || (data.data && data.data.link) || '/';
   const nid = data.nid || (data.notification && data.notification.tag);
   const tag = makeTag({ nid, title, body, url: clickUrl });

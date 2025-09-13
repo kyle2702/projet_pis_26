@@ -145,7 +145,15 @@ app.post('/notify/new-job', requireAdmin, async (req: Request, res: Response) =>
     if (tokenList.length) {
       const resp = await admin.messaging().sendEachForMulticast({
         tokens: tokenList,
-        data: { link, jobId, title: String(title), nid },
+        // Unifier les clés pour le SW: title/body/link/nid (tout en string)
+        data: {
+          link,
+          jobId: String(jobId),
+          title: 'Nouveau job disponible',
+          body: String(title),
+          nid,
+          type: 'new_job',
+        },
         webpush: { fcmOptions: { link } },
       });
       // Cleanup tokens invalides
@@ -231,7 +239,18 @@ app.post('/notify/new-application', requireAuth, async (req: Request, res: Respo
     const tokenList = fcmTokensFiltered.map(t => t.token);
     const resp = await admin.messaging().sendEachForMulticast({
       tokens: tokenList,
-      data: { link, jobId, jobTitle, applicantId, applicantName: String(applicantName || ''), nid },
+      // Fournir title/body cohérents pour l'affichage côté SW
+      data: {
+        link,
+        jobId: String(jobId),
+        jobTitle: String(jobTitle),
+        applicantId: String(applicantId),
+        applicantName: String(applicantName || ''),
+        title: 'Nouvelle candidature',
+        body: `${applicantName ? applicantName + ' a p' : 'Un utilisateur a p'}ostulé: ${jobTitle}`,
+        nid,
+        type: 'new_application',
+      },
       webpush: { fcmOptions: { link } },
     });
 
@@ -307,7 +326,15 @@ app.post('/notify/application-accepted', requireAdmin, async (req: Request, res:
     if (token && !sub) {
       await admin.messaging().send({
         token,
-        data: { link, jobId, jobTitle, nid },
+        data: {
+          link,
+          jobId: String(jobId),
+          jobTitle: String(jobTitle),
+          title: 'Candidature acceptée',
+          body: `Votre candidature a été acceptée: ${jobTitle}`,
+          nid,
+          type: 'application_accepted',
+        },
         webpush: { fcmOptions: { link } },
       });
     }
