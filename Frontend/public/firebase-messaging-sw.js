@@ -24,16 +24,22 @@ try {
 let messaging = null;
 // Déduplication simple en mémoire (cycle de vie court du SW):
 const RECENT = new Set();
+const RECENT_CONTENT = new Set();
 function makeTag({ nid, title, body, url }) {
   if (nid) return String(nid).slice(0, 128);
   return `tag:${title || ''}|${body || ''}|${url || ''}`.slice(0, 128);
 }
-function shouldShowOnce(tag) {
+function shouldShowOnce(tag, contentKey) {
   if (!tag) return true;
   if (RECENT.has(tag)) return false;
   RECENT.add(tag);
   // Purge après 15s
   setTimeout(() => RECENT.delete(tag), 15000);
+  if (contentKey) {
+    if (RECENT_CONTENT.has(contentKey)) return false;
+    RECENT_CONTENT.add(contentKey);
+    setTimeout(() => RECENT_CONTENT.delete(contentKey), 15000);
+  }
   return true;
 }
 try {
@@ -58,7 +64,8 @@ if (messaging) {
     const clickUrl = payload.fcmOptions?.link || payload.data?.link || '/';
   const nid = payload.data?.nid || payload.notification?.tag;
   const tag = makeTag({ nid, title, body, url: clickUrl });
-    if (!shouldShowOnce(tag)) return;
+  const contentKey = `${title}|${body}|${clickUrl}`.slice(0, 180);
+  if (!shouldShowOnce(tag, contentKey)) return;
     const options = {
       body,
       icon: '/vite.svg',
@@ -90,7 +97,8 @@ if (messaging) {
 }
 
 // Fallback Web Push standard (iOS/Safari, navigateurs sans FCM)
-self.addEventListener('push', (event) => {
+// N'activer le fallback Web Push que si Firebase Messaging n'est pas actif
+if (!messaging) self.addEventListener('push', (event) => {
   try {
     let data = {};
     if (event.data) {
@@ -111,7 +119,8 @@ self.addEventListener('push', (event) => {
     const clickUrl = data.link || (data.data && data.data.link) || '/';
   const nid = data.nid || (data.notification && data.notification.tag);
   const tag = makeTag({ nid, title, body, url: clickUrl });
-    if (!shouldShowOnce(tag)) return;
+    const contentKey = `${title}|${body}|${clickUrl}`.slice(0, 180);
+    if (!shouldShowOnce(tag, contentKey)) return;
     const options = {
       body,
       icon: '/vite.svg',

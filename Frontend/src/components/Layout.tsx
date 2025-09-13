@@ -10,22 +10,44 @@ const Layout: React.FC = () => {
   const location = useLocation();
 
   useEffect(() => {
-    if (!isLoading && !user && location.pathname !== '/') {
+    const publicPaths = ['/jobs', '/calendar'];
+    const isPublic = publicPaths.some((p) => location.pathname === p || location.pathname.startsWith(p + '/'));
+    if (!isLoading && !user && location.pathname !== '/' && !isPublic) {
       navigate('/', { replace: true });
     }
   }, [user, isLoading, location.pathname, navigate]);
 
+  useEffect(() => {
+    const updateHeaderHeight = () => {
+      const headerElement = document.querySelector<HTMLElement>('.header');
+      if (headerElement) {
+        const headerHeight = headerElement.offsetHeight;
+        document.documentElement.style.setProperty('--header-height', `${headerHeight}px`);
+      }
+    };
+
+    updateHeaderHeight();
+    window.addEventListener('resize', updateHeaderHeight);
+    const resizeObserver = new ResizeObserver(updateHeaderHeight);
+    const headerElement = document.querySelector('.header');
+    if (headerElement) {
+      resizeObserver.observe(headerElement);
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateHeaderHeight);
+      if (headerElement) {
+        resizeObserver.unobserve(headerElement);
+      }
+    };
+  }, []);
+
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', width: '100%' }}>
+    <div className="flex flex-col min-h-screen">
       <Header />
-      {/* Augmentation du padding-top pour compenser la hauteur du header fixe */}
-      <main
-        style={{
-          /* header fixe: utiliser clamp pour s'adapter aux petits écrans */
-          paddingTop: 'clamp(5rem, 12vw, 8rem)',
-          paddingBottom: 0,
-          flex: 1,
-        }}
+      <main 
+        className="flex-grow w-full mx-auto px-4 sm:px-6 pb-4 max-w-screen-sm md:max-w-3xl lg:max-w-5xl xl:max-w-6xl" 
+        style={{ paddingTop: 'var(--header-height)' }}
       >
         <Outlet />
       </main>

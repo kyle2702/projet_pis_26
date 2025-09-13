@@ -6,11 +6,9 @@
   font-size: 0.85rem; /* plus petit */
   line-height: 1.2;
   box-sizing: border-box;
-  /* Pleine largeur (full-bleed), même si #root est centré */
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
   border-top: 1px solid rgba(255,255,255,0.08);
+  backdrop-filter: saturate(1.1) blur(6px);
+  width: 100%;
 }
 
 .footer p {

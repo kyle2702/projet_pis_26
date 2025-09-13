@@ -28,9 +28,9 @@ service cloud.firestore {
       }
     }
 
-    // Meetings: lecture pour utilisateurs connectés, modifications réservées aux admins
+    // Meetings: lecture publique, modifications réservées aux admins
     match /meetings/{meetingId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update, delete: if isAdmin();
     }
 

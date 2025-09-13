@@ -266,10 +266,10 @@ const ProfilePage: React.FC = () => {
   }
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
       <h1>Mon profil</h1>
 
-      <section style={styles.section}>
+  <section style={styles.section} className="w-full">
         <h2 style={{ marginTop:0 }}>Mes jobs terminés</h2>
         <div style={{ margin: '0.3rem 0 0.8rem' }}>Total: <strong>{totalHours}</strong> heures</div>
         {jobs.length === 0 ? (
@@ -299,7 +299,7 @@ const ProfilePage: React.FC = () => {
       </section>
 
       {notifPermission !== 'unsupported' && (
-        <section style={styles.section}>
+  <section style={styles.section} className="w-full">
           <h2 style={{ marginTop:0 }}>Notifications</h2>
           {notifPermission === 'granted' ? (
             <div>Notifications déjà activées.</div>
@@ -318,7 +318,7 @@ const ProfilePage: React.FC = () => {
         </section>
       )}
 
-      <section style={styles.section}>
+  <section style={styles.section} className="w-full">
         <h2 style={{ marginTop:0 }}>Changer mon mot de passe</h2>
         <form onSubmit={handleChangePassword} style={{ maxWidth: 420, margin:'0 auto' }}>
           <label style={styles.label}>Ancien mot de passe</label>

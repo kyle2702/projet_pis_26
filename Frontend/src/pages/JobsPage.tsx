@@ -193,7 +193,7 @@ const JobsPage: React.FC = () => {
   }, [location.search]);
 
   return (
-    <div style={{ maxWidth: 400, margin: '2rem auto', padding: '1rem' }}>
+    <div style={{ maxWidth: 400, margin: '2rem auto', padding: '1rem' }} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
       <h1>Jobs disponibles</h1>
       {isAdmin && !showForm && (
         <button

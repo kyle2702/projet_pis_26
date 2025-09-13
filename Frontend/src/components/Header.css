@@ -22,7 +22,7 @@
   justify-content: flex-start; /* Aligne le contenu à gauche */
   align-items: center;
   width: 100%; /* Assure que le header prend toute la largeur */
-  position: fixed; /* Le fixe en haut de la page */
+  position: fixed; /* Reste en haut sans recouvrir le flux */
   top: 0;
   left: 0;
   z-index: 1000; /* S'assure qu'il est au-dessus des autres éléments */

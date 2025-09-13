@@ -103,7 +103,7 @@ const HistoryPage: React.FC = () => {
   if (error) return <div style={{ padding: 24 }}>{error}</div>;
 
   return (
-    <div style={{ maxWidth: 400, margin: '2rem auto', padding: '1rem', position: 'relative' }}>
+    <div style={{ maxWidth: 400, margin: '2rem auto', padding: '1rem', position: 'relative' }} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
       <a
        
         onClick={(e) => { e.preventDefault(); navigate('/jobs'); }}

@@ -124,7 +124,7 @@ const HomePage: React.FC = () => {
   }
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
       {token ? (
         // Vue si l'utilisateur est connecté
         <div>
@@ -141,7 +141,7 @@ const HomePage: React.FC = () => {
         // Vue si l'utilisateur n'est pas connecté (formulaire)
         <>
       <h1>Connexion</h1>
-          <form onSubmit={handleSubmit} style={styles.loginForm}>
+          <form onSubmit={handleSubmit} style={styles.loginForm} className="w-full">
             <div style={styles.formGroup}>
         <label htmlFor="username" style={styles.label}>Email</label>
               <input
