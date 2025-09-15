@@ -1,7 +1,7 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import type { EventInput } from '@fullcalendar/core';
 const CalendarView = React.lazy(() => import('../components/CalendarView'));
-import type { DateSelectArg, EventClickArg } from '@fullcalendar/core';
+import type { EventClickArg } from '@fullcalendar/core';
 // Styles FullCalendar (v6) — importer uniquement les plugins utilisés
 // Note: Les CSS des plugins ne sont pas importées ici pour compatibilité Vite; le calendrier fonctionne sans.
 import { collection, addDoc, getDocs, doc, getDoc, Timestamp } from 'firebase/firestore';
@@ -37,7 +37,13 @@ const CalendarPage: React.FC = () => {
     end?: Date | null;
     type: 'job' | 'meeting';
   } | null>(null);
-  // plus d'état d'erreur global: l'UI reste affichée même en cas d'échec partiel
+  const [addOpen, setAddOpen] = useState(false);
+  const [form, setForm] = useState<{ title: string; date: string; start: string; end: string }>({
+    title: '',
+    date: '',
+    start: '',
+    end: '',
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -114,33 +120,31 @@ const CalendarPage: React.FC = () => {
     return [...jobEvents, ...meetingEvents];
   }, [jobs, meetings]);
 
-  const handleSelect = async (sel: DateSelectArg) => {
+  const openAddModal = () => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    setForm({ title: '', date: `${yyyy}-${mm}-${dd}`, start: '09:00', end: '10:00' });
+    setAddOpen(true);
+  };
+
+  const submitAddMeeting = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!isAdmin) return;
-    const title = window.prompt('Titre de la réunion ?');
-    if (!title) return;
-
-    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const dateLabel = fmt(sel.start);
-    const startStr = window.prompt(`Heure de début le ${dateLabel} (HH:MM) ?`, '09:00');
-    if (!startStr) return;
-    const endStr = window.prompt(`Heure de fin le ${dateLabel} (HH:MM) ?`, '10:00');
-    if (!endStr) return;
-
-    const hhmm = /^([01]?\d|2[0-3]):([0-5]\d)$/;
-    if (!hhmm.test(startStr) || !hhmm.test(endStr)) {
-      alert('Format invalide. Utilisez HH:MM.');
+    const title = form.title.trim();
+    if (!title) { alert('Titre requis'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date)) { alert('Date invalide'); return; }
+    if (!/^([01]?\d|2[0-3]):([0-5]\d)$/.test(form.start) || !/^([01]?\d|2[0-3]):([0-5]\d)$/.test(form.end)) {
+      alert('Heures invalides (HH:MM)');
       return;
     }
-    const [sh, sm] = startStr.split(':').map(Number);
-    const [eh, em] = endStr.split(':').map(Number);
-    const start = new Date(sel.start);
-    start.setHours(sh, sm, 0, 0);
-    const end = new Date(sel.end || sel.start);
-    end.setHours(eh, em, 0, 0);
-    if (end <= start) {
-      alert('L\'heure de fin doit être après l\'heure de début.');
-      return;
-    }
+    const [sh, sm] = form.start.split(':').map(Number);
+    const [eh, em] = form.end.split(':').map(Number);
+    const [y, m, d] = form.date.split('-').map(Number);
+    const start = new Date(y, (m - 1), d, sh, sm, 0, 0);
+    const end = new Date(y, (m - 1), d, eh, em, 0, 0);
+    if (end <= start) { alert('Fin doit être après le début'); return; }
 
     try {
       const db = getFirestoreDb();
@@ -151,10 +155,10 @@ const CalendarPage: React.FC = () => {
         createdBy: user?.uid || null,
         createdAt: Timestamp.now(),
       });
-      // Mise à jour locale rapide
       setMeetings(prev => [...prev, { id: ref.id, title, start, end }]);
-    } catch {
-      alert('Impossible d\'ajouter la réunion');
+      setAddOpen(false);
+    } catch  {
+      alert("Impossible d'ajouter la réunion");
     }
   };
 
@@ -163,12 +167,25 @@ const CalendarPage: React.FC = () => {
   return (
     <div style={{ padding: 16 }} className="w-full mx-auto px-4 sm:px-6 max-w-screen-sm md:max-w-3xl lg:max-w-5xl pb-4">
       <h1 style={{ textAlign: 'center', margin: '0 0 1rem' }}>Calendrier</h1>
+      {isAdmin && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 12 }}>
+          <button
+            type="button"
+            onClick={openAddModal}
+            style={{
+              background: '#646cff', color: '#fff', border: 'none', borderRadius: 8,
+              padding: '0.5rem 0.9rem', cursor: 'pointer', fontWeight: 600
+            }}
+          >
+            Réunion +
+          </button>
+        </div>
+      )}
       <div style={{ maxWidth: 900, margin: '0 auto' }} className="w-full">
         <Suspense fallback={<div>Chargement du calendrier…</div>}>
           <CalendarView
             events={events as EventInput[]}
-            selectable={isAdmin}
-            onSelect={handleSelect}
+            selectable={false}
             onEventClick={(arg: EventClickArg) => {
               const kind = (arg.event.extendedProps?.kind as 'job' | 'meeting') || (arg.event.id.startsWith('job_') ? 'job' : 'meeting');
               setSelected({
@@ -182,6 +199,71 @@ const CalendarPage: React.FC = () => {
           />
         </Suspense>
       </div>
+
+      {addOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setAddOpen(false)}
+        >
+          <form
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={submitAddMeeting}
+            style={{ background: '#fff', color: '#222', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(520px, 92vw)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}
+          >
+            <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: '1.15rem' }}>Nouvelle réunion</h2>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Titre</span>
+                <input
+                  type="text"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  required
+                  style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }}
+                />
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span>Date</span>
+                  <input
+                    type="date"
+                    value={form.date}
+                    onChange={(e) => setForm({ ...form, date: e.target.value })}
+                    required
+                    style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }}
+                  />
+                </label>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span>Début</span>
+                  <input
+                    type="time"
+                    value={form.start}
+                    onChange={(e) => setForm({ ...form, start: e.target.value })}
+                    required
+                    style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }}
+                  />
+                </label>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span>Fin</span>
+                  <input
+                    type="time"
+                    value={form.end}
+                    onChange={(e) => setForm({ ...form, end: e.target.value })}
+                    required
+                    style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }}
+                  />
+                </label>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
+              <button type="button" onClick={() => setAddOpen(false)} style={{ background: '#eee', color: '#222', border: '1px solid #ddd', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer' }}>Annuler</button>
+              <button type="submit" style={{ background: '#646cff', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer', fontWeight: 600 }}>Créer</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {selected && (
         <div
