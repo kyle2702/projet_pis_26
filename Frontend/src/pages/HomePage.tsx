@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 const HomePage: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState('');
 
   const { user: loggedInUser, logout, isLoading, token, loginWithEmail } = useAuth();
@@ -91,7 +92,8 @@ const HomePage: React.FC = () => {
       border: '1px solid #ccc',
       borderRadius: '4px',
       fontSize: '1rem',
-      width: '280px'
+  width: '280px',
+  boxSizing: 'border-box'
     },
     button: {
       padding: '0.75rem',
@@ -116,6 +118,12 @@ const HomePage: React.FC = () => {
       marginTop: 0,
       marginBottom: '1rem',
     },
+    passwordWrapper: { position: 'relative', width: 'fit-content', minWidth: '280px', maxWidth: '90vw' },
+    toggleBtn: {
+      position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+      background: 'transparent', border: 'none', cursor: 'pointer', color: '#555',
+      padding: 4, fontSize: '.9rem'
+    }
   };
 
   // Afficher un message de chargement pendant la vérification de l'authentification
@@ -155,14 +163,38 @@ const HomePage: React.FC = () => {
             </div>
             <div style={styles.formGroup}>
               <label htmlFor="password" style={styles.label}>Password</label>
-              <input
-                type="password"
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                style={styles.input}
-              />
+              <div style={styles.passwordWrapper}>
+                <input
+                  type={showPwd ? 'text' : 'password'}
+                  id="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  style={{ ...styles.input, paddingRight: 40 }}
+                />
+                <button
+                  type="button"
+                  aria-label={showPwd ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                  onClick={() => setShowPwd(s => !s)}
+                  style={styles.toggleBtn}
+                  title={showPwd ? 'Masquer' : 'Afficher'}
+                >
+                  {showPwd ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2.458 12C3.732 7.943 7.523 5 12 5c1.246 0 2.442.196 3.556.56" />
+                      <path d="M21.542 12c-.557 1.775-1.6 3.33-2.96 4.553" />
+                      <path d="M14.121 14.121A3 3 0 0 1 9.88 9.88" />
+                      <path d="M12 5c4.477 0 8.268 2.943 9.542 7-.38 1.212-1.005 2.33-1.818 3.287" />
+                      <path d="M3 3l18 18" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2.458 12C3.732 7.943 7.523 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.065 7-9.542 7S3.75 16.057 2.458 12z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
             {error && <p style={styles.errorMessage}>{error}</p>}
             <button 
