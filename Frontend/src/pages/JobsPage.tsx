@@ -11,7 +11,7 @@ interface JobParticipants { [jobId: string]: string[]; }
 
 const JobsPage: React.FC = () => {
   const [jobParticipants, setJobParticipants] = useState<JobParticipants>({});
-  const { user } = useAuth();
+  const { user, isLoading: authLoading, isAdmin: ctxIsAdmin, rolesReady } = useAuth();
   const location = useLocation();
   const [focusJobId, setFocusJobId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -22,6 +22,7 @@ const JobsPage: React.FC = () => {
   const [userPendingApps, setUserPendingApps] = useState<Record<string, boolean>>({}); // jobId -> pending
   const [applyLoading, setApplyLoading] = useState<string | null>(null); // jobId en cours de postulation
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminReady, setAdminReady] = useState(false); // statut admin déterminé (vrai/faux) ?
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     title: '',
@@ -37,20 +38,11 @@ const JobsPage: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!user) { setIsAdmin(false); return; }
-      try {
-        const db = getFirestoreDb();
-        const snap = await getDoc(doc(db, 'users', user.uid));
-        const val = snap.exists() && snap.data().isAdmin === true;
-        if (!cancelled) setIsAdmin(!!val);
-      } catch {
-        if (!cancelled) setIsAdmin(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [user]);
+    // Aligner isAdmin/adminReady avec le contexte centralisé
+    if (authLoading || !rolesReady) return;
+    setIsAdmin(!!ctxIsAdmin);
+    setAdminReady(true);
+  }, [ctxIsAdmin, rolesReady, authLoading]);
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
@@ -171,8 +163,11 @@ const JobsPage: React.FC = () => {
     }
   }, [isAdmin, user]);
 
-  // Recharger quand user ou statut admin change
-  useEffect(() => { fetchJobs(); }, [fetchJobs]);
+  // Recharger une fois le statut admin déterminé (évite clignotement non-admin)
+  useEffect(() => {
+    if (!adminReady) return;
+    fetchJobs();
+  }, [fetchJobs, adminReady]);
 
   // Extraire jobId depuis query string pour highlight
   useEffect(() => {
@@ -192,8 +187,18 @@ const JobsPage: React.FC = () => {
     }
   }, [location.search]);
 
+  // Pendant la détermination du rôle, on garde la page en chargement
+  if (!adminReady) {
+    return (
+      <div style={{ maxWidth: 400, margin: '2rem auto', padding: '1rem' }} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
+        <h1>Jobs disponibles</h1>
+        <div>Chargement...</div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ maxWidth: 400, margin: '2rem auto', padding: '1rem' }} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
+    <div style={{ maxWidth: 320, margin: '2rem auto', padding: '1rem' }} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
       <h1>Jobs disponibles</h1>
       {isAdmin && !showForm && (
         <button
@@ -221,6 +226,12 @@ const JobsPage: React.FC = () => {
               // Validation simple
               if (!form.title.trim() || !form['date-begin'].trim() || !form['date-end'].trim() || !form.adress.trim() || !form.description.trim() || !form.remuneration.trim() || !form.places) {
                 setFormError('Tous les champs sont obligatoires.');
+                setFormLoading(false);
+                return;
+              }
+              // Empêcher même date/heure en début et fin
+              if (form['date-begin'] === form['date-end']) {
+                setFormError('La date/heure de fin doit être différente de la date/heure de début.');
                 setFormLoading(false);
                 return;
               }

@@ -1,0 +1,19 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Images pour ventes
+    match /ventes/{allPaths=**} {
+      // Lecture publique des images publiées
+      allow read: if true;
+      // Upload réservé aux admins (basé sur Firestore users/{uid}.isAdmin)
+      allow write: if request.auth != null &&
+        exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        get(/databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // Fallback deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

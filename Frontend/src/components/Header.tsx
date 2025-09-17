@@ -2,29 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { NavLink, useNavigate } from 'react-router-dom';
 import './Header.css';
-import { getFirestoreDb } from '../firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
+// Firestore read removed; we rely on AuthContext for admin status
 
 const Header: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!user) { setIsAdmin(false); return; }
-      try {
-        const db = getFirestoreDb();
-        const snap = await getDoc(doc(db, 'users', user.uid));
-        const val = snap.exists() && snap.data().isAdmin === true;
-        if (!cancelled) setIsAdmin(!!val);
-      } catch {
-        if (!cancelled) setIsAdmin(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [user]);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -81,14 +63,14 @@ const Header: React.FC = () => {
                 <NavLink to="/profile" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')} onClick={() => setMenuOpen(false)} style={{ display: 'block', padding: '0.7rem 2rem' }}>Profil</NavLink>
 
                   <button
-          onClick={async () => {
+          onClick={() => {
                       setMenuOpen(false);
-                      try {
-                        await logout();
-            navigate('/', { replace: true });
-                      } catch {
-            window.location.href = '/';
-                      }
+                      // Navigation immédiate, puis déconnexion en arrière-plan
+                      navigate('/', { replace: true });
+                      logout().catch(() => {
+                        // En cas d'échec improbable, on force le rechargement
+                        window.location.href = '/';
+                      });
                     }}
                     className="nav-link logout-btn"
                     style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.7rem 2rem', background: 'none', border: 'none', textAlign: 'center', width: '100%', cursor: 'pointer', color: 'red', fontWeight: 'bold' }}

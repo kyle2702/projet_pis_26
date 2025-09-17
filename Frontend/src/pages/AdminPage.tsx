@@ -260,7 +260,7 @@ const AdminPage: React.FC = () => {
     },
     table: {
       width: '100%',
-      maxWidth: '600px',
+      maxWidth: '390px',
       borderCollapse: 'collapse',
       margin: '2rem auto',
       backgroundColor: '#fdfdfd',

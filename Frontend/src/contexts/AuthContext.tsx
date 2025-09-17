@@ -23,6 +23,8 @@ interface AuthContextType {
   user: PublicUser | null;
   token: string | null;
   isLoading: boolean;
+  isAdmin: boolean;
+  rolesReady: boolean;
   loginWithEmail: (email: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
@@ -47,6 +49,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const tokenRef = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [rolesReady, setRolesReady] = useState(false);
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -60,6 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const t = await getIdToken(u, /* forceRefresh */ true).catch(() => null);
         setToken(t);
         tokenRef.current = t;
+        setRolesReady(false);
         // Upsert du document utilisateur minimal, sans écraser displayName existant par null
         try {
           const userDocRef = doc(d, 'users', u.uid);
@@ -71,6 +76,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (e) {
           // non bloquant pour l'UI
           console.warn('Impossible de créer/mettre à jour le profil utilisateur:', e);
+        }
+
+        // Récupération du rôle admin
+        try {
+          const snap = await (await import('firebase/firestore')).getDoc(doc(d, 'users', u.uid));
+          const isAdm = snap.exists() && snap.data()?.isAdmin === true;
+          setIsAdmin(!!isAdm);
+        } catch {
+          setIsAdmin(false);
+        } finally {
+          setRolesReady(true);
         }
 
         // Init FCM (meilleur effort) + demande de permission si nécessaire
@@ -109,14 +125,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.info('FCM/Web Push non initialisé (permission refusée / non supporté / SW).', e);
         }
       } else {
-        // Déconnexion: nettoyage
+        // Déconnexion: nettoyage (non-bloquant pour l'UI)
         const lastToken = tokenRef.current;
         if (lastToken) {
-          try { await unsubscribeWebPush(lastToken); } catch { /* noop */ }
+          // Lancer en arrière-plan pour ne pas bloquer le rendu
+          Promise.resolve().then(() => unsubscribeWebPush(lastToken)).catch(() => { /* noop */ });
         }
         setUser(null);
         setToken(null);
         tokenRef.current = null;
+  setIsAdmin(false);
+  setRolesReady(true);
         // Cleanup messaging listener
         try { unsubMsg?.(); } catch { /* noop */ }
       }
@@ -142,7 +161,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, loginWithEmail, loginWithGoogle, logout }}>
+  <AuthContext.Provider value={{ user, token, isLoading, isAdmin, rolesReady, loginWithEmail, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );

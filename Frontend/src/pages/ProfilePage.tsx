@@ -150,7 +150,7 @@ const ProfilePage: React.FC = () => {
   const totalHours = (totalMinutes / 60).toFixed(2);
 
   const styles: { [k:string]: React.CSSProperties } = {
-    container: { maxWidth: 900, margin: '2rem auto', padding: '1rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' },
+    container: { maxWidth: 800, margin: '2rem auto', padding: '1rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' },
     section: { background: '#fff', color:'#222', border: '1px solid #ddd', borderRadius: 10, padding: '1rem', margin: '0 auto 1.5rem', width: 'fit-content', maxWidth: '90vw', alignSelf: 'center' },
     table: { width:'fit-content', maxWidth:'90vw', margin:'0 auto', borderCollapse:'collapse' },
     th: { background:'#646cff', color:'#fff', padding:'0.6rem', textAlign:'left' },
@@ -310,14 +310,14 @@ const ProfilePage: React.FC = () => {
             <div>Notifications déjà activées.</div>
           ) : (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
-              <div style={{ maxWidth: 420 }}>Activez les notifications pour recevoir les alertes des nouveaux jobs et mises à jour.</div>
+              <div style={{ maxWidth: 400 }}>Activez les notifications pour recevoir les alertes des nouveaux jobs et mises à jour.</div>
               <button style={styles.btn} onClick={handleEnableNotifications} disabled={notifBusy}>
                 {notifBusy ? 'Activation…' : 'Activer les notifications'}
               </button>
               {notifPermission === 'denied' && (
-                <div style={{ color:'#b71c1c', maxWidth: 420 }}>Notifications refusées dans le navigateur. Allez dans Réglages &gt; Notifications &gt; Pionniers 26 et activez-les.</div>
+                <div style={{ color:'#b71c1c', maxWidth: 400 }}>Notifications refusées dans le navigateur. Allez dans Réglages &gt; Notifications &gt; Pionniers 26 et activez-les.</div>
               )}
-              {notifMsg && <div style={{ maxWidth: 420 }}>{notifMsg}</div>}
+              {notifMsg && <div style={{ maxWidth: 400 }}>{notifMsg}</div>}
             </div>
           )}
         </section>
@@ -325,7 +325,7 @@ const ProfilePage: React.FC = () => {
 
   <section style={styles.section} className="w-full">
         <h2 style={{ marginTop:0 }}>Changer mon mot de passe</h2>
-        <form onSubmit={handleChangePassword} style={{ maxWidth: 420, margin:'0 auto' }}>
+        <form onSubmit={handleChangePassword} style={{ maxWidth: 400, margin:'0 auto' }}>
           <label style={styles.label}>Ancien mot de passe</label>
           <div style={styles.inputWrap}>
             <input type={showOld ? 'text' : 'password'} value={oldPwd} onChange={e => setOldPwd(e.target.value)} style={{...styles.input, paddingRight: 40}} disabled={submitting} />
@@ -380,7 +380,7 @@ const ProfilePage: React.FC = () => {
               )}
             </button>
           </div>
-          {pwdMsg && <div style={{ marginTop: 10, color: pwdSuccess ? 'green' : '#b71c1c', maxWidth: 420 }}>{pwdMsg}</div>}
+          {pwdMsg && <div style={{ marginTop: 10, color: pwdSuccess ? 'green' : '#b71c1c', maxWidth: 400 }}>{pwdMsg}</div>}
           <div style={{ marginTop: 14 }}>
             <button type="submit" style={styles.btn} disabled={submitting}>{hasPasswordProvider ? 'Mettre à jour' : 'Définir un mot de passe'}</button>
           </div>
