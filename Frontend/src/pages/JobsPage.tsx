@@ -1,12 +1,24 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, getDocs, doc, getDoc, addDoc, serverTimestamp, getCountFromServer } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, serverTimestamp, getCountFromServer, updateDoc, deleteDoc, onSnapshot, query } from 'firebase/firestore';
 import { getFirebaseAuth } from '../firebase/config';
 import { getFirestoreDb } from '../firebase/config';
 
 // Types
-interface Job { id: string; title: string; 'date-begin': string; 'date-end': string; adress: string; description: string; remuneration: string; places: number; dateBeginSort?: number; }
+interface Job {
+  id: string;
+  title: string;
+  'date-begin': string; // affichage (ex: 28/11/2025 17:00)
+  'date-end': string;   // affichage
+  dateBeginInput?: string; // pour input datetime-local (YYYY-MM-DDTHH:mm)
+  dateEndInput?: string;   // pour input datetime-local
+  adress: string;
+  description: string;
+  remuneration: string;
+  places: number;
+  dateBeginSort?: number;
+}
 interface JobParticipants { [jobId: string]: string[]; }
 
 const JobsPage: React.FC = () => {
@@ -35,6 +47,21 @@ const JobsPage: React.FC = () => {
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [formLoading, setFormLoading] = useState(false);
+  // Edition
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    'date-begin': '',
+    'date-end': '',
+    adress: '',
+    description: '',
+    remuneration: '',
+    places: 1,
+  });
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -51,9 +78,9 @@ const JobsPage: React.FC = () => {
       const jobsCol = collection(db, 'jobs');
       const snap = await getDocs(jobsCol);
       const list: Job[] = [];
-  const appCounts: Record<string, number> = {};
-  const userApps: Record<string, boolean> = {};
-  const userPending: Record<string, boolean> = {};
+      const appCounts: Record<string, number> = {};
+      const userApps: Record<string, boolean> = {};
+      const userPending: Record<string, boolean> = {};
       const participantsMap: JobParticipants = {};
 
       function toDateString(val: unknown): string {
@@ -83,6 +110,35 @@ const JobsPage: React.FC = () => {
         return undefined;
       }
 
+      function toInputLocalString(val: unknown): string {
+        if (!val) return '';
+        if (typeof val === 'string') {
+          // si déjà au format input, garder
+          if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(val)) return val;
+          // tenter conversion générique
+          const d = new Date(val);
+          if (!Number.isNaN(d.getTime())) {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mi = String(d.getMinutes()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+          }
+          return '';
+        }
+        if (typeof val === 'object' && val !== null && 'seconds' in val) {
+          const d = new Date((val as { seconds: number }).seconds * 1000);
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          const hh = String(d.getHours()).padStart(2, '0');
+          const mi = String(d.getMinutes()).padStart(2, '0');
+          return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+        }
+        return '';
+      }
+
       // Préparer les fetch parallèles sur chaque job
       await Promise.all(snap.docs.map(async (d) => {
         const data = d.data() as Partial<Job>;
@@ -92,6 +148,8 @@ const JobsPage: React.FC = () => {
           title: data.title ?? '',
           'date-begin': toDateString(data['date-begin']),
           'date-end': toDateString(data['date-end']),
+          dateBeginInput: toInputLocalString(data['date-begin']),
+          dateEndInput: toInputLocalString(data['date-end']),
           adress: data.adress ?? '',
           description: data.description ?? '',
           remuneration: data.remuneration ?? '',
@@ -163,11 +221,137 @@ const JobsPage: React.FC = () => {
     }
   }, [isAdmin, user]);
 
-  // Recharger une fois le statut admin déterminé (évite clignotement non-admin)
+  // Temps réel: écouter les jobs et dépendances
   useEffect(() => {
     if (!adminReady) return;
-    fetchJobs();
-  }, [fetchJobs, adminReady]);
+    const db = getFirestoreDb();
+    setLoading(true);
+
+    const unsubs: Array<() => void> = [];
+    const jobsUnsub = onSnapshot(query(collection(db, 'jobs')),
+      async (jobsSnap) => {
+  const list: Job[] = [];
+  const appCounts: Record<string, number> = {};
+
+        // utilitaires (du fetchJobs)
+        function toDateString(val: unknown): string {
+          if (!val) return '';
+          if (typeof val === 'string') {
+            const m = val.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+            if (m) return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
+            return val;
+          }
+          if (typeof val === 'object' && val !== null && 'seconds' in val) {
+            const d = new Date((val as { seconds: number }).seconds * 1000);
+            return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+          }
+          return String(val);
+        }
+        function toEpochMillis(val: unknown): number | undefined {
+          if (!val) return undefined;
+          if (typeof val === 'string') {
+            const dt = new Date(val);
+            const t = dt.getTime();
+            return Number.isNaN(t) ? undefined : t;
+          }
+          if (typeof val === 'object' && val !== null && 'seconds' in val) {
+            return (val as { seconds: number }).seconds * 1000;
+          }
+          return undefined;
+        }
+        function toInputLocalString(val: unknown): string {
+          if (!val) return '';
+          if (typeof val === 'string') {
+            if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(val)) return val;
+            const d = new Date(val);
+            if (!Number.isNaN(d.getTime())) {
+              const yyyy = d.getFullYear();
+              const mm = String(d.getMonth() + 1).padStart(2, '0');
+              const dd = String(d.getDate()).padStart(2, '0');
+              const hh = String(d.getHours()).padStart(2, '0');
+              const mi = String(d.getMinutes()).padStart(2, '0');
+              return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+            }
+            return '';
+          }
+          if (typeof val === 'object' && val !== null && 'seconds' in val) {
+            const d = new Date((val as { seconds: number }).seconds * 1000);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mi = String(d.getMinutes()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+          }
+          return '';
+        }
+
+        // Construire liste de jobs de l'instantané
+        for (const d of jobsSnap.docs) {
+          const data = d.data() as Partial<Job>;
+          const jobId = d.id;
+          list.push({
+            id: jobId,
+            title: data.title ?? '',
+            'date-begin': toDateString(data['date-begin']),
+            'date-end': toDateString(data['date-end']),
+            dateBeginInput: toInputLocalString(data['date-begin']),
+            dateEndInput: toInputLocalString(data['date-end']),
+            adress: data.adress ?? '',
+            description: data.description ?? '',
+            remuneration: data.remuneration ?? '',
+            places: typeof data.places === 'number' ? data.places : 0,
+            dateBeginSort: toEpochMillis(data['date-begin'])
+          });
+
+          // Sous-écoutes par job
+          const appsUnsub = onSnapshot(collection(db, `jobs/${jobId}/applications`), (appsSnap) => {
+            appCounts[jobId] = appsSnap.size;
+            setApplications(prev => ({ ...prev, [jobId]: appCounts[jobId] }));
+            if (isAdmin) {
+              const names = appsSnap.docs.map(p => {
+                const pdata = p.data();
+                return (pdata.displayName as string) || (pdata.email as string) || p.id;
+              });
+              setJobParticipants(prev => ({ ...prev, [jobId]: names }));
+            }
+          });
+          unsubs.push(appsUnsub);
+
+          if (user) {
+            const userAppDocUnsub = onSnapshot(doc(db, `jobs/${jobId}/applications/${user.uid}`), (docSnap) => {
+              setUserApplications(prev => ({ ...prev, [jobId]: docSnap.exists() }));
+            });
+            unsubs.push(userAppDocUnsub);
+            const pendingDocUnsub = onSnapshot(doc(db, 'jobApplications', `${jobId}_${user.uid}`), (docSnap) => {
+              setUserPendingApps(prev => ({ ...prev, [jobId]: docSnap.exists() && (docSnap.data()?.status === 'pending') }));
+            });
+            unsubs.push(pendingDocUnsub);
+          }
+        }
+
+        // Tri et set liste
+        list.sort((a, b) => {
+          const ta = a.dateBeginSort ?? Number.POSITIVE_INFINITY;
+          const tb = b.dateBeginSort ?? Number.POSITIVE_INFINITY;
+          return ta - tb;
+        });
+        setJobs(list);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('onSnapshot jobs error:', err);
+        setLoading(false);
+      }
+    );
+    unsubs.push(jobsUnsub);
+
+    return () => {
+      unsubs.forEach(u => {
+        try { u(); } catch (e) { console.warn('jobs unsubscribe failed', e); }
+      });
+    };
+  }, [adminReady, isAdmin, user]);
 
   // Extraire jobId depuis query string pour highlight
   useEffect(() => {
@@ -341,6 +525,56 @@ const JobsPage: React.FC = () => {
             flexDirection: 'column'
                     }}
                   >
+                {isAdmin && (
+                  <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 8 }}>
+                    <button
+                      title="Modifier"
+                      aria-label="Modifier"
+                      onClick={() => {
+                        setEditingId(job.id);
+                        setEditForm({
+                          title: job.title,
+                          'date-begin': job.dateBeginInput || '',
+                          'date-end': job.dateEndInput || '',
+                          adress: job.adress,
+                          description: job.description,
+                          remuneration: job.remuneration,
+                          places: job.places,
+                        });
+                        setEditError(null);
+                        setEditOpen(true);
+                      }}
+                      style={{ background: '#fff', border: '1px solid #ddd', borderRadius: 8, padding: 6, cursor: 'pointer' }}
+                    >
+                      {/* Pencil icon */}
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                    </button>
+                    <button
+                      title="Supprimer"
+                      aria-label="Supprimer"
+                      onClick={async () => {
+                        if (deleteLoadingId) return;
+                        const ok = window.confirm('Supprimer définitivement ce job ?');
+                        if (!ok) return;
+                        try {
+                          setDeleteLoadingId(job.id);
+                          const db = getFirestoreDb();
+                          await deleteDoc(doc(db, 'jobs', job.id));
+                          await fetchJobs();
+                        } catch (e) {
+                          alert('Suppression impossible.');
+                          console.error(e);
+                        } finally {
+                          setDeleteLoadingId(null);
+                        }
+                      }}
+                      style={{ background: '#fff', border: '1px solid #ddd', borderRadius: 8, padding: 6, cursor: 'pointer' }}
+                    >
+                      {/* Trash icon */}
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                  </div>
+                )}
                 <h2 style={{ margin: 0, color: '#222', fontWeight: 700 }}>{job.title && job.title.trim() ? job.title : 'Sans titre'}</h2>
                 <div style={{ color: '#646cff', fontWeight: 600, marginBottom: 8 }}>
                   {job['date-begin']} — {job['date-end']}
@@ -448,8 +682,100 @@ const JobsPage: React.FC = () => {
         </>
         );
       })()}
+      {isAdmin && editOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setEditOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <form
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!editingId) return;
+              setEditError(null);
+              setEditLoading(true);
+              try {
+                if (!editForm.title.trim() || !editForm['date-begin'].trim() || !editForm['date-end'].trim() || !editForm.adress.trim() || !editForm.description.trim() || !editForm.remuneration.trim() || !editForm.places) {
+                  setEditError('Tous les champs sont obligatoires.');
+                  setEditLoading(false);
+                  return;
+                }
+                if (editForm['date-begin'] === editForm['date-end']) {
+                  setEditError('La date/heure de fin doit être différente de la date/heure de début.');
+                  setEditLoading(false);
+                  return;
+                }
+                const db = getFirestoreDb();
+                await updateDoc(doc(db, 'jobs', editingId), {
+                  title: editForm.title,
+                  'date-begin': editForm['date-begin'],
+                  'date-end': editForm['date-end'],
+                  adress: editForm.adress,
+                  description: editForm.description,
+                  remuneration: editForm.remuneration,
+                  places: Number(editForm.places),
+                });
+                setEditOpen(false);
+                setEditingId(null);
+                await fetchJobs();
+              } catch (err) {
+                setEditError('Mise à jour impossible.');
+                console.error(err);
+              } finally {
+                setEditLoading(false);
+              }
+            }}
+            style={{ background: '#fff', color: '#222', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(520px, 92vw)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Modifier le job</h2>
+              <button type="button" onClick={() => setEditOpen(false)} style={{ background: '#f0f0f0', color: '#222', border: '1px solid #ddd', borderRadius: 8, padding: '0.25rem 0.55rem', cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Titre</span>
+                <input type="text" value={editForm.title} onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Début</span>
+                <input type="datetime-local" value={editForm['date-begin']} onChange={e => setEditForm(f => ({ ...f, ['date-begin']: e.target.value }))} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Fin</span>
+                <input type="datetime-local" value={editForm['date-end']} onChange={e => setEditForm(f => ({ ...f, ['date-end']: e.target.value }))} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Adresse</span>
+                <input type="text" value={editForm.adress} onChange={e => setEditForm(f => ({ ...f, adress: e.target.value }))} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Description</span>
+                <textarea value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Rémunération</span>
+                <input type="text" value={editForm.remuneration} onChange={e => setEditForm(f => ({ ...f, remuneration: e.target.value }))} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Places</span>
+                <input type="number" min={1} value={editForm.places} onChange={e => setEditForm(f => ({ ...f, places: Number(e.target.value) }))} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+              </label>
+            </div>
+            {editError && <div style={{ color: 'red', marginTop: 8 }}>{editError}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
+              <button type="button" onClick={() => setEditOpen(false)} style={{ background: '#eee', color: '#222', border: '1px solid #ddd', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer' }}>Annuler</button>
+              <button type="submit" disabled={editLoading} style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer', fontWeight: 600 }}>Enregistrer</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };
 
 export default JobsPage;
+
+// Edit Modal component inline for simplicity
+// Rendered conditionally at the bottom of JobsPage JSX

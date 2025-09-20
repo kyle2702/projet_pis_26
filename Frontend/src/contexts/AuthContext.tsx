@@ -149,7 +149,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const loginWithEmail = async (email: string, password: string) => {
-  await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
+    try {
+      await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
+    } catch (e: unknown) {
+      const code = typeof e === 'object' && e && 'code' in e ? String((e as { code?: unknown }).code) : '';
+      // Normaliser les cas: auth/invalid-credential peut recouvrir mauvais mot de passe
+      let msg = 'Impossible de se connecter.';
+      if (code.includes('invalid-credential') || code.includes('wrong-password')) {
+        msg = 'Email ou mot de passe incorrect.';
+      } else if (code.includes('user-not-found')) {
+        msg = "Aucun compte ne correspond à cet email.";
+      } else if (code.includes('too-many-requests')) {
+        msg = 'Trop de tentatives. Réessayez plus tard.';
+      } else if (code.includes('network-request-failed')) {
+        msg = 'Problème réseau. Vérifiez votre connexion.';
+      } else if (code.includes('user-disabled')) {
+        msg = 'Ce compte a été désactivé.';
+      }
+      const err = new Error(msg);
+      // @ts-expect-error ajouter le code pour usage éventuel en UI
+      err.code = code;
+      throw err;
+    }
   };
 
   const loginWithGoogle = async () => {

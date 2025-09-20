@@ -56,6 +56,59 @@ function fmtDate(val: unknown): string {
   return String(val);
 }
 
+// Composant réutilisable pour champs mot de passe — placé au niveau module pour conserver le focus
+type PasswordFieldProps = {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  marginTop?: number;
+  styles: {
+    label: React.CSSProperties;
+    inputWrap: React.CSSProperties;
+    input: React.CSSProperties;
+    eyeBtn: React.CSSProperties;
+  };
+};
+
+const PasswordField: React.FC<PasswordFieldProps> = ({ label, value, onChange, disabled, marginTop, styles }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <>
+      <label style={{ ...styles.label, ...(marginTop ? { marginTop } : {}) }}>{label}</label>
+      <div style={styles.inputWrap}>
+        <input
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          style={{ ...styles.input, paddingRight: 40 }}
+          disabled={disabled}
+        />
+        <button
+          type="button"
+          aria-label={show ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+          onClick={() => setShow(s => !s)}
+          style={styles.eyeBtn}
+          title={show ? 'Masquer' : 'Afficher'}
+        >
+          {show ? (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 2l20 20" />
+              <path d="M10.58 10.58A3 3 0 0 0 12 15a3 3 0 0 0 3-3 3 3 0 0 0-4.42-2.42" />
+              <path d="M9.88 5.09A10.45 10.45 0 0 1 12 5c4.477 0 8.268 2.943 9.542 7-.558 1.777-1.615 3.334-2.98 4.556" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2.458 12C3.732 7.943 7.523 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.065 7-9.542 7S3.75 16.057 2.458 12z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          )}
+        </button>
+      </div>
+    </>
+  );
+};
+
 const ProfilePage: React.FC = () => {
   const { user, token: idToken } = useAuth();
   const [jobs, setJobs] = useState<Array<{ id:string; title:string; begin:string; end:string; minutes:number }>>([]);
@@ -73,9 +126,7 @@ const ProfilePage: React.FC = () => {
   const [pwdSuccess, setPwdSuccess] = useState<boolean>(false);
   const [hasPasswordProvider, setHasPasswordProvider] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const [showOld, setShowOld] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  // Les champs mot de passe utilisent un composant réutilisable (défini au niveau module)
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -150,17 +201,20 @@ const ProfilePage: React.FC = () => {
   const totalHours = (totalMinutes / 60).toFixed(2);
 
   const styles: { [k:string]: React.CSSProperties } = {
-    container: { maxWidth: 800, margin: '2rem auto', padding: '1rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' },
-    section: { background: '#fff', color:'#222', border: '1px solid #ddd', borderRadius: 10, padding: '1rem', margin: '0 auto 1.5rem', width: 'fit-content', maxWidth: '90vw', alignSelf: 'center' },
-    table: { width:'fit-content', maxWidth:'90vw', margin:'0 auto', borderCollapse:'collapse' },
+  container: { margin: '2rem auto', padding: 0, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' },
+  section: { background: '#fff', color:'#222', border: '1px solid #ddd', borderRadius: 10, padding: '1rem', margin: '0 auto 1.5rem', width: '100%', maxWidth: 320, alignSelf: 'center' },
+  table: { width:'100%', margin:'0 auto', borderCollapse:'collapse' },
     th: { background:'#646cff', color:'#fff', padding:'0.6rem', textAlign:'left' },
     td: { borderBottom:'1px solid #eee', padding:'0.6rem' },
     label: { display:'block', marginBottom: 6, fontWeight: 600 },
-  input: { width: '280px', padding: '0.75rem', borderRadius: 4, border:'1px solid #ccc', fontSize: '1rem', boxSizing: 'border-box' },
-  inputWrap: { position: 'relative', width: 'fit-content', minWidth: '280px', maxWidth: '90vw', margin: '0 auto' },
+  input: { width: '100%', padding: '0.75rem', borderRadius: 4, border:'1px solid #ccc', fontSize: '1rem', boxSizing: 'border-box' },
+  inputWrap: { position: 'relative', width: '100%', maxWidth: 320, margin: '0 auto' },
     eyeBtn: { position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'transparent', border:'none', cursor:'pointer', color:'#555', padding:4, fontSize: '.9rem' },
     btn: { background:'#646cff', color:'#fff', border:'none', borderRadius:8, padding:'0.6rem 1rem', cursor:'pointer' }
   };
+  const passwordFieldStyles = { label: styles.label, inputWrap: styles.inputWrap, input: styles.input, eyeBtn: styles.eyeBtn };
+
+  
 
   async function handleEnableNotifications() {
     setNotifMsg(null);
@@ -271,7 +325,7 @@ const ProfilePage: React.FC = () => {
   }
 
   return (
-    <div style={styles.container} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
+    <div style={styles.container} className="max-w-screen-sm w-full mx-auto">
       <h1>Mon profil</h1>
 
   <section style={styles.section} className="w-full">
@@ -310,14 +364,14 @@ const ProfilePage: React.FC = () => {
             <div>Notifications déjà activées.</div>
           ) : (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
-              <div style={{ maxWidth: 400 }}>Activez les notifications pour recevoir les alertes des nouveaux jobs et mises à jour.</div>
+              <div style={{ maxWidth: 320 }}>Activez les notifications pour recevoir les alertes des nouveaux jobs et mises à jour.</div>
               <button style={styles.btn} onClick={handleEnableNotifications} disabled={notifBusy}>
                 {notifBusy ? 'Activation…' : 'Activer les notifications'}
               </button>
               {notifPermission === 'denied' && (
-                <div style={{ color:'#b71c1c', maxWidth: 400 }}>Notifications refusées dans le navigateur. Allez dans Réglages &gt; Notifications &gt; Pionniers 26 et activez-les.</div>
+                <div style={{ color:'#b71c1c', maxWidth: 320 }}>Notifications refusées dans le navigateur. Allez dans Réglages &gt; Notifications &gt; Pionniers 26 et activez-les.</div>
               )}
-              {notifMsg && <div style={{ maxWidth: 400 }}>{notifMsg}</div>}
+              {notifMsg && <div style={{ maxWidth: 320 }}>{notifMsg}</div>}
             </div>
           )}
         </section>
@@ -325,62 +379,11 @@ const ProfilePage: React.FC = () => {
 
   <section style={styles.section} className="w-full">
         <h2 style={{ marginTop:0 }}>Changer mon mot de passe</h2>
-        <form onSubmit={handleChangePassword} style={{ maxWidth: 400, margin:'0 auto' }}>
-          <label style={styles.label}>Ancien mot de passe</label>
-          <div style={styles.inputWrap}>
-            <input type={showOld ? 'text' : 'password'} value={oldPwd} onChange={e => setOldPwd(e.target.value)} style={{...styles.input, paddingRight: 40}} disabled={submitting} />
-            <button type="button" aria-label={showOld ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} onClick={()=>setShowOld(s=>!s)} style={styles.eyeBtn} title={showOld ? 'Masquer' : 'Afficher'}>
-              {showOld ? (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 2l20 20" />
-                  <path d="M10.58 10.58A3 3 0 0 0 12 15a3 3 0 0 0 3-3 3 3 0 0 0-4.42-2.42" />
-                  <path d="M9.88 5.09A10.45 10.45 0 0 1 12 5c4.477 0 8.268 2.943 9.542 7-.558 1.777-1.615 3.334-2.98 4.556" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2.458 12C3.732 7.943 7.523 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.065 7-9.542 7S3.75 16.057 2.458 12z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-              )}
-            </button>
-          </div>
-          <label style={{...styles.label, marginTop: 10}}>Nouveau mot de passe</label>
-          <div style={styles.inputWrap}>
-            <input type={showNew ? 'text' : 'password'} value={newPwd} onChange={e => setNewPwd(e.target.value)} style={{...styles.input, paddingRight: 40}} disabled={submitting} />
-            <button type="button" aria-label={showNew ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} onClick={()=>setShowNew(s=>!s)} style={styles.eyeBtn} title={showNew ? 'Masquer' : 'Afficher'}>
-              {showNew ? (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 2l20 20" />
-                  <path d="M10.58 10.58A3 3 0 0 0 12 15a3 3 0 0 0 3-3 3 3 0 0 0-4.42-2.42" />
-                  <path d="M9.88 5.09A10.45 10.45 0 0 1 12 5c4.477 0 8.268 2.943 9.542 7-.558 1.777-1.615 3.334-2.98 4.556" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2.458 12C3.732 7.943 7.523 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.065 7-9.542 7S3.75 16.057 2.458 12z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-              )}
-            </button>
-          </div>
-          <label style={{...styles.label, marginTop: 10}}>Confirmer le nouveau mot de passe</label>
-          <div style={styles.inputWrap}>
-            <input type={showConfirm ? 'text' : 'password'} value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} style={{...styles.input, paddingRight: 40}} disabled={submitting} />
-            <button type="button" aria-label={showConfirm ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} onClick={()=>setShowConfirm(s=>!s)} style={styles.eyeBtn} title={showConfirm ? 'Masquer' : 'Afficher'}>
-              {showConfirm ? (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 2l20 20" />
-                  <path d="M10.58 10.58A3 3 0 0 0 12 15a3 3 0 0 0 3-3 3 3 0 0 0-4.42-2.42" />
-                  <path d="M9.88 5.09A10.45 10.45 0 0 1 12 5c4.477 0 8.268 2.943 9.542 7-.558 1.777-1.615 3.334-2.98 4.556" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2.458 12C3.732 7.943 7.523 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.065 7-9.542 7S3.75 16.057 2.458 12z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-              )}
-            </button>
-          </div>
-          {pwdMsg && <div style={{ marginTop: 10, color: pwdSuccess ? 'green' : '#b71c1c', maxWidth: 400 }}>{pwdMsg}</div>}
+        <form onSubmit={handleChangePassword} style={{ maxWidth: 320, margin:'0 auto' }}>
+          <PasswordField label="Ancien mot de passe" value={oldPwd} onChange={setOldPwd} disabled={submitting} styles={passwordFieldStyles} />
+          <PasswordField label="Nouveau mot de passe" value={newPwd} onChange={setNewPwd} disabled={submitting} marginTop={10} styles={passwordFieldStyles} />
+          <PasswordField label="Confirmer le nouveau mot de passe" value={confirmPwd} onChange={setConfirmPwd} disabled={submitting} marginTop={10} styles={passwordFieldStyles} />
+          {pwdMsg && <div style={{ marginTop: 10, color: pwdSuccess ? 'green' : '#b71c1c', maxWidth: 320 }}>{pwdMsg}</div>}
           <div style={{ marginTop: 14 }}>
             <button type="submit" style={styles.btn} disabled={submitting}>{hasPasswordProvider ? 'Mettre à jour' : 'Définir un mot de passe'}</button>
           </div>

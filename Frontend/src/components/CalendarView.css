@@ -1,0 +1,64 @@
+/* Styles responsives pour rendre le rendu mobile identique au desktop mais plus compact */
+
+/* Réduction globale sur petits écrans */
+@media (max-width: 320px) {
+  /* rétrécir la typographie globale du calendrier */
+  .fc {
+    font-size: 12px; /* desktop intact; mobile plus petit */
+  }
+
+  /* header: boutons et titre plus compacts */
+  .fc .fc-toolbar {
+    gap: 6px;
+  }
+  .fc .fc-toolbar h2 {
+    font-size: 1rem;
+  }
+  .fc .fc-toolbar .fc-button {
+    padding: 0.3rem 0.45rem;
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+
+  /* grille mensuelle: cellules et libellés plus petits */
+  .fc-theme-standard .fc-scrollgrid {
+    border-radius: 8px;
+  }
+  .fc .fc-daygrid-day-number {
+    font-size: 0.85rem;
+    padding: 2px 4px;
+  }
+  .fc .fc-col-header-cell-cushion {
+    padding: 4px 2px;
+    font-size: 0.75rem;
+  }
+  .fc .fc-daygrid-day-frame {
+    padding: 2px;
+  }
+
+  /* événements sous forme de puces plus fines */
+  .fc .fc-daygrid-event {
+    padding: 1px 3px;
+    margin: 1px 0;
+    border-radius: 4px;
+    font-size: 0.8rem;
+  }
+  .fc .fc-daygrid-event .fc-event-time {
+    font-weight: 500;
+  }
+
+  /* vues timeGrid: réduire la hauteur des créneaux */
+  .fc .fc-timegrid-slot {
+    height: 1.5em;
+  }
+  .fc .fc-timegrid-axis-cushion,
+  .fc .fc-timegrid-slot-label-cushion {
+    padding: 2px 4px;
+    font-size: 0.75rem;
+  }
+
+  /* Liste: resserrer les items */
+  .fc .fc-list-event-title, .fc .fc-list-day-cushion, .fc .fc-list-table td {
+    padding: 4px 6px;
+  }
+}
