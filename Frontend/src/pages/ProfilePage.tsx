@@ -111,6 +111,7 @@ const PasswordField: React.FC<PasswordFieldProps> = ({ label, value, onChange, d
 
 const ProfilePage: React.FC = () => {
   const { user, token: idToken } = useAuth();
+  const [profileName, setProfileName] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Array<{ id:string; title:string; begin:string; end:string; minutes:number }>>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -127,6 +128,27 @@ const ProfilePage: React.FC = () => {
   const [hasPasswordProvider, setHasPasswordProvider] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   // Les champs mot de passe utilisent un composant réutilisable (défini au niveau module)
+  useEffect(() => {
+    // Récupérer le displayName depuis auth ou Firestore (fallback)
+    let cancelled = false;
+    (async () => {
+      if (!user) { if (!cancelled) setProfileName(null); return; }
+      if (user.displayName && user.displayName.trim()) {
+        if (!cancelled) setProfileName(user.displayName);
+        return;
+      }
+      try {
+        const db = getFirestoreDb();
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        const name = snap.exists() ? ((snap.data() as { displayName?: string | null })?.displayName ?? null) : null;
+        if (!cancelled) setProfileName(typeof name === 'string' && name.trim() ? name : null);
+      } catch {
+        if (!cancelled) setProfileName(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.uid, user?.displayName]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -327,6 +349,9 @@ const ProfilePage: React.FC = () => {
   return (
     <div style={styles.container} className="max-w-screen-sm w-full mx-auto">
       <h1>Mon profil</h1>
+      {profileName && (
+        <div style={{ marginTop: 6, marginBottom: 8, fontSize: '1.25rem', color: 'inherit' }}>{profileName}</div>
+      )}
 
   <section style={styles.section} className="w-full">
         <h2 style={{ marginTop:0 }}>Mes jobs terminés</h2>

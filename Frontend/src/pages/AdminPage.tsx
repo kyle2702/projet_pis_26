@@ -260,7 +260,7 @@ const AdminPage: React.FC = () => {
     },
     table: {
       width: '100%',
-      maxWidth: '390px',
+      maxWidth: '360px',
       borderCollapse: 'collapse',
       margin: '2rem auto',
       backgroundColor: '#fdfdfd',
@@ -291,12 +291,45 @@ const AdminPage: React.FC = () => {
       padding: '1rem',
       borderBottom: '1px solid #e0e0e0',
       color: '#333',
-      textAlign: 'center',
+  textAlign: 'center',
+  verticalAlign: 'middle',
     },
     h2: {
       marginBottom: '2rem',
       color: '#646cff',
     },
+    scrollBox: {
+      maxHeight: '320px',
+      overflowY: 'auto',
+      width: '100%',
+      maxWidth: '360px',
+      margin: '0 auto',
+      borderRadius: '8px',
+      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.05)'
+    },
+    actionCell: {
+      display: 'flex',
+      alignItems: 'center',
+  justifyContent: 'center',
+  flexDirection: 'column',
+  gap: 6,
+    },
+    iconBtn: {
+      border: 'none',
+      borderRadius: 6,
+      width: 32,
+      height: 32,
+      minWidth: 32,
+      minHeight: 32,
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      cursor: 'pointer',
+      color: 'white',
+      fontWeight: 700,
+      fontSize: 16,
+      lineHeight: 1,
+    }
   };
 
   // Tri des utilisateurs
@@ -363,34 +396,48 @@ const AdminPage: React.FC = () => {
         </tbody>
       </table>
 
-      <h2 style={{...styles.h2, marginTop: 40}}>Demandes de candidature en attente</h2>
+      <h2 style={{...styles.h2, marginTop: 40}}>Demandes de candidature</h2>
       {appLoading ? <div>Chargement des candidatures...</div> : appError ? <div>{appError}</div> : (
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.thInactive}>Job</th>
-              <th style={styles.thInactive}>Utilisateur</th>
-              <th style={styles.thInactive}>Email</th>
-              <th style={styles.thInactive}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {applications.length === 0 && (
-              <tr><td colSpan={4} style={styles.td}>Aucune demande en attente</td></tr>
-            )}
-            {applications.map(app => (
-              <tr key={app.id}>
-                <td style={styles.td}>{app.jobTitle}</td>
-                <td style={styles.td}>{app.displayName}</td>
-                <td style={styles.td}>{app.email}</td>
-                <td style={styles.td}>
-                  <button style={{ background: '#2e7d32', color: 'white', border: 'none', borderRadius: 6, padding: '0.5rem 1rem', marginRight: 8, cursor: 'pointer' }} onClick={() => handleAppStatus(app.id, 'accepted')}>Accepter</button>
-                  <button style={{ background: '#c62828', color: 'white', border: 'none', borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer' }} onClick={() => handleAppStatus(app.id, 'refused')}>Refuser</button>
-                </td>
+        <div style={styles.scrollBox}>
+          <table style={{ ...styles.table, margin: 0, boxShadow: 'none' }}>
+            <thead>
+              <tr>
+                <th style={styles.thInactive}>Job</th>
+                <th style={styles.thInactive}>Utilisateur</th>
+                <th style={styles.thInactive}>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {applications.length === 0 && (
+                <tr><td colSpan={3} style={styles.td}>Aucune demande en attente</td></tr>
+              )}
+              {applications.map(app => (
+                <tr key={app.id}>
+                  <td style={styles.td}>{app.jobTitle}</td>
+                  <td style={styles.td}>{app.displayName}</td>
+          <td style={{ ...styles.td, ...styles.actionCell }}>
+                    <button
+                      title="Accepter"
+                      aria-label="Accepter"
+            style={{ ...styles.iconBtn, background: '#2e7d32' }}
+                      onClick={() => handleAppStatus(app.id, 'accepted')}
+                    >
+                      ✓
+                    </button>
+                    <button
+                      title="Refuser"
+                      aria-label="Refuser"
+            style={{ ...styles.iconBtn, background: '#c62828' }}
+                      onClick={() => handleAppStatus(app.id, 'refused')}
+                    >
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

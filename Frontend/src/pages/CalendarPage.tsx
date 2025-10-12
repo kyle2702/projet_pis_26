@@ -4,7 +4,7 @@ const CalendarView = React.lazy(() => import('../components/CalendarView'));
 import type { EventClickArg } from '@fullcalendar/core';
 // Styles FullCalendar (v6) — importer uniquement les plugins utilisés
 // Note: Les CSS des plugins ne sont pas importées ici pour compatibilité Vite; le calendrier fonctionne sans.
-import { collection, addDoc, onSnapshot, doc, getDoc, Timestamp, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, doc, getDoc, Timestamp, deleteDoc, updateDoc } from 'firebase/firestore';
 import { getFirestoreDb } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -55,7 +55,15 @@ const CalendarPage: React.FC = () => {
     end: '',
   });
   const [addWeekendOpen, setAddWeekendOpen] = useState(false);
-  const [weekendForm, setWeekendForm] = useState<{ title: string; location: string; startDate: string; endDate: string }>({ title: 'Week-end', location: '', startDate: '', endDate: '' });
+  const [weekendForm, setWeekendForm] = useState<{ title: string; location: string; startDate: string; startTime: string; endDate: string; endTime: string }>(
+    { title: 'Week-end', location: '', startDate: '', startTime: '00:00', endDate: '', endTime: '23:59' }
+  );
+
+  // États pour édition
+  const [editMeetingOpen, setEditMeetingOpen] = useState(false);
+  const [editMeetingForm, setEditMeetingForm] = useState<{ title: string; date: string; start: string; end: string }>({ title: '', date: '', start: '', end: '' });
+  const [editWeekendOpen, setEditWeekendOpen] = useState(false);
+  const [editWeekendForm, setEditWeekendForm] = useState<{ title: string; location: string; startDate: string; startTime: string; endDate: string; endTime: string }>({ title: 'Week-end', location: '', startDate: '', startTime: '00:00', endDate: '', endTime: '23:59' });
 
   useEffect(() => {
     let cancelled = false;
@@ -205,7 +213,7 @@ const CalendarPage: React.FC = () => {
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
-    setWeekendForm({ title: 'Week-end', location: '', startDate: `${yyyy}-${mm}-${dd}`, endDate: `${yyyy}-${mm}-${dd}` });
+  setWeekendForm({ title: 'Week-end', location: '', startDate: `${yyyy}-${mm}-${dd}`, startTime: '09:00', endDate: `${yyyy}-${mm}-${dd}`, endTime: '18:00' });
     setAddWeekendOpen(true);
   };
 
@@ -249,25 +257,122 @@ const CalendarPage: React.FC = () => {
       alert('Dates invalides');
       return;
     }
+    if (!/^([01]?\d|2[0-3]):([0-5]\d)$/.test(weekendForm.startTime) || !/^([01]?\d|2[0-3]):([0-5]\d)$/.test(weekendForm.endTime)) {
+      alert('Heures invalides (HH:MM)');
+      return;
+    }
     const [ys, ms, ds] = weekendForm.startDate.split('-').map(Number);
     const [ye, me, de] = weekendForm.endDate.split('-').map(Number);
-    const start = new Date(ys, ms - 1, ds, 0, 0, 0, 0);
-    const endExclusive = new Date(ye, me - 1, de + 1, 0, 0, 0, 0);
-    if (endExclusive <= start) { alert('La date de fin doit être après la date de début'); return; }
+    const [sh, sm] = weekendForm.startTime.split(':').map(Number);
+    const [eh, em] = weekendForm.endTime.split(':').map(Number);
+    const start = new Date(ys, ms - 1, ds, sh, sm, 0, 0);
+    const end = new Date(ye, me - 1, de, eh, em, 0, 0);
+    if (end <= start) { alert('La fin doit être après le début'); return; }
     try {
       const db = getFirestoreDb();
       const ref = await addDoc(collection(db, 'weekends'), {
         title: (weekendForm.title || 'Week-end').trim() || 'Week-end',
         location: (weekendForm.location || '').trim(),
         start: Timestamp.fromDate(start),
-        end: Timestamp.fromDate(endExclusive),
+        end: Timestamp.fromDate(end),
         createdBy: user?.uid || null,
         createdAt: Timestamp.now(),
       });
-      setWeekends(prev => [...prev, { id: ref.id, start, end: endExclusive, title: (weekendForm.title || 'Week-end').trim() || 'Week-end', location: (weekendForm.location || '').trim() }]);
+      setWeekends(prev => [...prev, { id: ref.id, start, end, title: (weekendForm.title || 'Week-end').trim() || 'Week-end', location: (weekendForm.location || '').trim() }]);
       setAddWeekendOpen(false);
     } catch {
       alert("Impossible d'ajouter le week-end");
+    }
+  };
+
+  // Ouvrir édition réunion
+  const openEditMeeting = () => {
+    if (!selected || selected.type !== 'meeting' || !selected.start) return;
+    const s = selected.start;
+    const e = selected.end || new Date(s.getTime() + 60 * 60 * 1000);
+    const y = s.getFullYear();
+    const m = String(s.getMonth() + 1).padStart(2, '0');
+    const d = String(s.getDate()).padStart(2, '0');
+    const sh = String(s.getHours()).padStart(2, '0');
+    const sm = String(s.getMinutes()).padStart(2, '0');
+    const eh = String(e.getHours()).padStart(2, '0');
+    const em = String(e.getMinutes()).padStart(2, '0');
+    setEditMeetingForm({ title: selected.title || 'Réunion', date: `${y}-${m}-${d}`, start: `${sh}:${sm}`, end: `${eh}:${em}` });
+    setEditMeetingOpen(true);
+  };
+
+  const submitEditMeeting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin || !selected || selected.type !== 'meeting') return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(editMeetingForm.date)) { alert('Date invalide'); return; }
+    if (!/^([01]?\d|2[0-3]):([0-5]\d)$/.test(editMeetingForm.start) || !/^([01]?\d|2[0-3]):([0-5]\d)$/.test(editMeetingForm.end)) { alert('Heures invalides (HH:MM)'); return; }
+    const [y, m, d] = editMeetingForm.date.split('-').map(Number);
+    const [sh, sm] = editMeetingForm.start.split(':').map(Number);
+    const [eh, em] = editMeetingForm.end.split(':').map(Number);
+    const start = new Date(y, m - 1, d, sh, sm, 0, 0);
+    const end = new Date(y, m - 1, d, eh, em, 0, 0);
+    if (end <= start) { alert('Fin doit être après le début'); return; }
+    try {
+      const db = getFirestoreDb();
+      const id = selected.id.replace(/^meeting_/, '');
+      await updateDoc(doc(db, 'meetings', id), {
+        title: editMeetingForm.title.trim() || 'Réunion',
+        start: Timestamp.fromDate(start),
+        end: Timestamp.fromDate(end),
+        updatedAt: Timestamp.now(),
+      });
+      setEditMeetingOpen(false);
+      setSelected(null);
+    } catch {
+      alert("Impossible de modifier la réunion");
+    }
+  };
+
+  // Ouvrir édition week-end
+  const openEditWeekend = () => {
+    if (!selected || selected.type !== 'weekend' || !selected.start || !selected.end) return;
+    const s = selected.start; const e = selected.end;
+    const ys = s.getFullYear(); const ms = String(s.getMonth() + 1).padStart(2, '0'); const ds = String(s.getDate()).padStart(2, '0');
+    const ye = e.getFullYear(); const me = String(e.getMonth() + 1).padStart(2, '0'); const de = String(e.getDate()).padStart(2, '0');
+    const sh = String(s.getHours()).padStart(2, '0'); const sm = String(s.getMinutes()).padStart(2, '0');
+    const eh = String(e.getHours()).padStart(2, '0'); const em = String(e.getMinutes()).padStart(2, '0');
+    setEditWeekendForm({
+      title: selected.title || 'Week-end',
+      location: selected.location || '',
+      startDate: `${ys}-${ms}-${ds}`,
+      startTime: `${sh}:${sm}`,
+      endDate: `${ye}-${me}-${de}`,
+      endTime: `${eh}:${em}`,
+    });
+    setEditWeekendOpen(true);
+  };
+
+  const submitEditWeekend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin || !selected || selected.type !== 'weekend') return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(editWeekendForm.startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(editWeekendForm.endDate)) { alert('Dates invalides'); return; }
+    if (!/^([01]?\d|2[0-3]):([0-5]\d)$/.test(editWeekendForm.startTime) || !/^([01]?\d|2[0-3]):([0-5]\d)$/.test(editWeekendForm.endTime)) { alert('Heures invalides (HH:MM)'); return; }
+    const [ys, ms, ds] = editWeekendForm.startDate.split('-').map(Number);
+    const [ye, me, de] = editWeekendForm.endDate.split('-').map(Number);
+    const [sh, sm] = editWeekendForm.startTime.split(':').map(Number);
+    const [eh, em] = editWeekendForm.endTime.split(':').map(Number);
+    const start = new Date(ys, ms - 1, ds, sh, sm, 0, 0);
+    const end = new Date(ye, me - 1, de, eh, em, 0, 0);
+    if (end <= start) { alert('La fin doit être après le début'); return; }
+    try {
+      const db = getFirestoreDb();
+      const id = selected.id.replace(/^weekend_/, '');
+      await updateDoc(doc(db, 'weekends', id), {
+        title: editWeekendForm.title.trim() || 'Week-end',
+        location: (editWeekendForm.location || '').trim(),
+        start: Timestamp.fromDate(start),
+        end: Timestamp.fromDate(end),
+        updatedAt: Timestamp.now(),
+      });
+      setEditWeekendOpen(false);
+      setSelected(null);
+    } catch {
+      alert("Impossible de modifier le week-end");
     }
   };
 
@@ -430,7 +535,16 @@ const CalendarPage: React.FC = () => {
               <div><strong>Fin:</strong> {selected.end ? selected.end.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</div>
             </div>
             {isAdmin && selected.type !== 'job' && (
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => {
+                    if (selected.type === 'meeting') openEditMeeting();
+                    else if (selected.type === 'weekend') openEditWeekend();
+                  }}
+                  style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  Modifier
+                </button>
                 <button
                   onClick={async () => {
                     const ok = window.confirm(`Supprimer définitivement cet ${selected.type === 'meeting' ? 'événement' : 'week-end'} ?`);
@@ -496,31 +610,107 @@ const CalendarPage: React.FC = () => {
                 />
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <span>Début</span>
-                  <input
-                    type="date"
-                    value={weekendForm.startDate}
-                    onChange={(e) => setWeekendForm({ ...weekendForm, startDate: e.target.value })}
-                    required
-                    style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }}
-                  />
-                </label>
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <span>Fin</span>
-                  <input
-                    type="date"
-                    value={weekendForm.endDate}
-                    onChange={(e) => setWeekendForm({ ...weekendForm, endDate: e.target.value })}
-                    required
-                    style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }}
-                  />
-                </label>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span>Début — Date</span>
+                    <input type="date" value={weekendForm.startDate} onChange={(e) => setWeekendForm({ ...weekendForm, startDate: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span>Début — Heure</span>
+                    <input type="time" value={weekendForm.startTime} onChange={(e) => setWeekendForm({ ...weekendForm, startTime: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                  </label>
+                </div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span>Fin — Date</span>
+                    <input type="date" value={weekendForm.endDate} onChange={(e) => setWeekendForm({ ...weekendForm, endDate: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span>Fin — Heure</span>
+                    <input type="time" value={weekendForm.endTime} onChange={(e) => setWeekendForm({ ...weekendForm, endTime: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                  </label>
+                </div>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
               <button type="button" onClick={() => setAddWeekendOpen(false)} style={{ background: '#eee', color: '#222', border: '1px solid #ddd', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer' }}>Annuler</button>
               <button type="submit" style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer', fontWeight: 600 }}>Créer</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {editMeetingOpen && selected && selected.type === 'meeting' && (
+        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setEditMeetingOpen(false)}>
+          <form onClick={(e) => e.stopPropagation()} onSubmit={submitEditMeeting} style={{ background: '#fff', color: '#222', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(520px, 92vw)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}>
+            <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: '1.15rem' }}>Modifier la réunion</h2>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Titre</span>
+                <input type="text" value={editMeetingForm.title} onChange={(e) => setEditMeetingForm({ ...editMeetingForm, title: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span>Date</span>
+                  <input type="date" value={editMeetingForm.date} onChange={(e) => setEditMeetingForm({ ...editMeetingForm, date: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                </label>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span>Début</span>
+                  <input type="time" value={editMeetingForm.start} onChange={(e) => setEditMeetingForm({ ...editMeetingForm, start: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                </label>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span>Fin</span>
+                  <input type="time" value={editMeetingForm.end} onChange={(e) => setEditMeetingForm({ ...editMeetingForm, end: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                </label>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
+              <button type="button" onClick={() => setEditMeetingOpen(false)} style={{ background: '#eee', color: '#222', border: '1px solid #ddd', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer' }}>Annuler</button>
+              <button type="submit" style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer', fontWeight: 600 }}>Enregistrer</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {editWeekendOpen && selected && selected.type === 'weekend' && (
+        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setEditWeekendOpen(false)}>
+          <form onClick={(e) => e.stopPropagation()} onSubmit={submitEditWeekend} style={{ background: '#fff', color: '#222', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(520px, 92vw)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}>
+            <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: '1.15rem' }}>Modifier le week-end</h2>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Titre</span>
+                <input type="text" value={editWeekendForm.title} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, title: e.target.value })} style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} placeholder="Week-end" />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span>Lieu</span>
+                <input type="text" value={editWeekendForm.location} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, location: e.target.value })} style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} placeholder="Ex: Local, Adresse..." />
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span>Début — Date</span>
+                    <input type="date" value={editWeekendForm.startDate} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, startDate: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span>Début — Heure</span>
+                    <input type="time" value={editWeekendForm.startTime} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, startTime: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                  </label>
+                </div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span>Fin — Date</span>
+                    <input type="date" value={editWeekendForm.endDate} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, endDate: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span>Fin — Heure</span>
+                    <input type="time" value={editWeekendForm.endTime} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, endTime: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
+              <button type="button" onClick={() => setEditWeekendOpen(false)} style={{ background: '#eee', color: '#222', border: '1px solid #ddd', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer' }}>Annuler</button>
+              <button type="submit" style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer', fontWeight: 600 }}>Enregistrer</button>
             </div>
           </form>
         </div>

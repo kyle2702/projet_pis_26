@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, getDocs, doc, getDoc, addDoc, serverTimestamp, getCountFromServer, updateDoc, deleteDoc, onSnapshot, query } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, serverTimestamp, getCountFromServer, updateDoc, deleteDoc, onSnapshot, query, setDoc } from 'firebase/firestore';
 import { getFirebaseAuth } from '../firebase/config';
 import { getFirestoreDb } from '../firebase/config';
 
@@ -19,7 +20,97 @@ interface Job {
   places: number;
   dateBeginSort?: number;
 }
-interface JobParticipants { [jobId: string]: string[]; }
+interface Participant { userId: string; displayName?: string; email?: string }
+interface JobParticipants { [jobId: string]: Participant[]; }
+
+// Combobox avec recherche intégrée en haut de la liste
+type ComboOption = { value: string; label: string };
+const ComboSearch: React.FC<{ value: string; onChange: (v: string) => void; options: ComboOption[]; placeholder?: string; maxItems?: number; disabled?: boolean; }>
+  = ({ value, onChange, options, placeholder = 'Choisir…', maxItems = 5, disabled }) => {
+    const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState('');
+    const wrapRef = useRef<HTMLDivElement | null>(null);
+    const buttonRef = useRef<HTMLButtonElement | null>(null);
+    const menuRef = useRef<HTMLDivElement | null>(null);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const selected = options.find(o => o.value === value);
+    const list = options.filter(o => {
+      const q = query.trim().toLowerCase();
+      return !q || o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q);
+    }).slice(0, maxItems);
+    const [menuPos, setMenuPos] = useState<{ left: number; top: number; width: number; maxHeight: number; openUp: boolean }>({ left: 0, top: 0, width: 0, maxHeight: 240, openUp: false });
+
+    const updatePosition = useCallback(() => {
+      if (!buttonRef.current) return;
+      const rect = buttonRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const desiredMax = 280;
+      const openUp = spaceBelow < 200 && spaceAbove > spaceBelow;
+      const maxHeight = Math.max(140, Math.min(desiredMax, (openUp ? spaceAbove - 10 : spaceBelow - 10)));
+      setMenuPos({
+        left: Math.round(rect.left),
+        top: Math.round(openUp ? rect.top - Math.min(desiredMax, maxHeight) : rect.bottom),
+        width: Math.round(rect.width),
+        maxHeight,
+        openUp
+      });
+    }, []);
+    useEffect(() => {
+      const onDocClick = (e: MouseEvent) => {
+        if (!wrapRef.current) return;
+        const target = e.target as Node;
+        if (wrapRef.current.contains(target)) return;
+        if (menuRef.current && menuRef.current.contains(target)) return;
+        setOpen(false);
+        setQuery('');
+      };
+      document.addEventListener('mousedown', onDocClick);
+      return () => document.removeEventListener('mousedown', onDocClick);
+    }, []);
+    useEffect(() => {
+      if (!open) return;
+      updatePosition();
+      const onScroll = () => updatePosition();
+      const onResize = () => updatePosition();
+      window.addEventListener('scroll', onScroll, true);
+      window.addEventListener('resize', onResize);
+      return () => {
+        window.removeEventListener('scroll', onScroll, true);
+        window.removeEventListener('resize', onResize);
+      };
+    }, [open, updatePosition]);
+    useEffect(() => {
+      if (open) setTimeout(() => inputRef.current?.focus(), 0);
+    }, [open]);
+    return (
+      <div ref={wrapRef} style={{ position: 'relative', width: '100%', minWidth: 0 }}>
+        <button ref={buttonRef} type="button" disabled={disabled} onClick={() => setOpen(o => !o)}
+          style={{ width: '100%', textAlign: 'left', background: '#1f2937', color: '#e5e7eb', border: '1px solid #374151', borderRadius: 8, padding: '0.45rem 0.6rem', cursor: disabled ? 'not-allowed' : 'pointer' }}>
+          {selected ? selected.label : <span style={{ color: '#9ca3af' }}>{placeholder}</span>}
+        </button>
+        {open && createPortal(
+          <div ref={menuRef} role="listbox"
+            style={{ position: 'fixed', zIndex: 100000, top: menuPos.top, left: menuPos.left, width: menuPos.width, background: '#111827', color: '#e5e7eb', border: '1px solid #374151', borderRadius: 8, boxShadow: '0 10px 26px rgba(0,0,0,0.45)', padding: 8 }}>
+            <input ref={inputRef} type="text" placeholder="Rechercher…" value={query} onChange={(e) => setQuery(e.target.value)}
+              style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: 6, border: '1px solid #374151', background: '#1f2937', color: '#e5e7eb', marginBottom: 8 }} />
+            <div style={{ maxHeight: menuPos.maxHeight, overflowY: 'auto', display: 'grid', gap: 4 }}>
+              {list.length === 0 ? (
+                <div style={{ color: '#9ca3af', padding: '0.25rem 0.2rem' }}>Aucun résultat</div>
+              ) : (
+                list.map(opt => (
+                  <button key={opt.value} onClick={() => { onChange(opt.value); setOpen(false); setQuery(''); }} type="button"
+                    style={{ textAlign: 'left', width: '100%', background: '#1f2937', border: '1px solid #374151', color: '#e5e7eb', borderRadius: 6, padding: '0.4rem 0.6rem', cursor: 'pointer' }}>
+                    {opt.label}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>, document.body)
+        }
+      </div>
+    );
+  };
 
 const JobsPage: React.FC = () => {
   const [jobParticipants, setJobParticipants] = useState<JobParticipants>({});
@@ -50,6 +141,7 @@ const JobsPage: React.FC = () => {
   // Edition
   const [editOpen, setEditOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
   const [editForm, setEditForm] = useState({
     title: '',
     'date-begin': '',
@@ -62,6 +154,10 @@ const JobsPage: React.FC = () => {
   const [editError, setEditError] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
+  // Admin: gestion utilisateurs pour remplacement participants
+  const [allUsers, setAllUsers] = useState<Array<{ uid: string; displayName?: string | null; email?: string | null }>>([]);
+  const [participantBusy, setParticipantBusy] = useState<string | null>(null); // key: `${jobId}:${userId}`
+  const [replaceSelection, setReplaceSelection] = useState<Record<string, string>>({}); // key: `${jobId}:${userId}` -> newUserId
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -70,6 +166,24 @@ const JobsPage: React.FC = () => {
     setIsAdmin(!!ctxIsAdmin);
     setAdminReady(true);
   }, [ctxIsAdmin, rolesReady, authLoading]);
+
+  // Charger tous les utilisateurs (admin) pour remplacement participants
+  useEffect(() => {
+    if (!adminReady || !isAdmin) return;
+    (async () => {
+      try {
+        const db = getFirestoreDb();
+        const snap = await getDocs(collection(db, 'users'));
+        const list = snap.docs.map(d => {
+          const data = d.data() as { displayName?: string | null; email?: string | null };
+          return { uid: d.id, displayName: data.displayName ?? null, email: data.email ?? null };
+        });
+        setAllUsers(list);
+      } catch (e) {
+        console.warn('Chargement des utilisateurs impossible (admin):', e);
+      }
+    })();
+  }, [adminReady, isAdmin]);
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
@@ -185,11 +299,11 @@ const JobsPage: React.FC = () => {
         if (isAdmin) {
           try {
             const participantsSnap = await getDocs(collection(db, `jobs/${jobId}/applications`));
-            const names = participantsSnap.docs.map(p => {
+            const participants: Participant[] = participantsSnap.docs.map(p => {
               const pdata = p.data();
-              return (pdata.displayName as string) || (pdata.email as string) || p.id;
+              return { userId: p.id, displayName: pdata.displayName as string | undefined, email: pdata.email as string | undefined };
             });
-            participantsMap[jobId] = names;
+            participantsMap[jobId] = participants;
           } catch {
             participantsMap[jobId] = [];
           }
@@ -309,11 +423,11 @@ const JobsPage: React.FC = () => {
             appCounts[jobId] = appsSnap.size;
             setApplications(prev => ({ ...prev, [jobId]: appCounts[jobId] }));
             if (isAdmin) {
-              const names = appsSnap.docs.map(p => {
+              const participants: Participant[] = appsSnap.docs.map(p => {
                 const pdata = p.data();
-                return (pdata.displayName as string) || (pdata.email as string) || p.id;
+                return { userId: p.id, displayName: pdata.displayName as string | undefined, email: pdata.email as string | undefined };
               });
-              setJobParticipants(prev => ({ ...prev, [jobId]: names }));
+              setJobParticipants(prev => ({ ...prev, [jobId]: participants }));
             }
           });
           unsubs.push(appsUnsub);
@@ -382,7 +496,7 @@ const JobsPage: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 320, margin: '2rem auto', padding: '1rem' }} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
+    <div style={{ maxWidth: 340, margin: '2rem auto', padding: '1rem' }} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
       <h1>Jobs disponibles</h1>
       {isAdmin && !showForm && (
         <button
@@ -669,9 +783,9 @@ const JobsPage: React.FC = () => {
                 {placesRestantes === 0 && (
                   <div style={{ color: '#c62828', fontWeight: 600, marginTop: 8 }}>Complet</div>
                 )}
-                {isAdmin && participants.length > 0 && (
+        {isAdmin && participants.length > 0 && (
                   <div style={{ marginTop: 12, paddingTop: 8, borderTop: '1px solid #eee', color: '#222', fontWeight: 500, fontSize: '.95rem' }}>
-                    <span style={{ color: '#646cff', fontWeight: 700 }}>Participants :</span> {participants.join(', ')}
+          <span style={{ color: '#646cff', fontWeight: 700 }}>Participants :</span> {participants.map(p => p.displayName || p.email || p.userId).join(', ')}
                   </div>
                 )}
               </div>
@@ -727,7 +841,7 @@ const JobsPage: React.FC = () => {
                 setEditLoading(false);
               }
             }}
-            style={{ background: '#fff', color: '#222', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(520px, 92vw)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}
+            style={{ background: '#fff', color: '#222', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(340px, 92vw)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Modifier le job</h2>
@@ -762,6 +876,16 @@ const JobsPage: React.FC = () => {
                 <span>Places</span>
                 <input type="number" min={1} value={editForm.places} onChange={e => setEditForm(f => ({ ...f, places: Number(e.target.value) }))} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
               </label>
+
+              {/* Bouton pour gestion des participants dans une modale dédiée */}
+              {isAdmin && editingId && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                  <button type="button" onClick={() => setParticipantsOpen(true)}
+                    style={{ background: '#111827', color: '#e5e7eb', border: '1px solid #374151', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer' }}>
+                    Participants...
+                  </button>
+                </div>
+              )}
             </div>
             {editError && <div style={{ color: 'red', marginTop: 8 }}>{editError}</div>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
@@ -769,6 +893,166 @@ const JobsPage: React.FC = () => {
               <button type="submit" disabled={editLoading} style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer', fontWeight: 600 }}>Enregistrer</button>
             </div>
           </form>
+        </div>
+      )}
+      {isAdmin && participantsOpen && editingId && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setParticipantsOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 10050, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', color: '#222', borderRadius: 12, padding: '0.8rem 0.9rem', width: 'min(340px, 92vw)', height: 420, boxShadow: '0 10px 30px rgba(0,0,0,0.35)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Participants</h2>
+              <button type="button" onClick={() => setParticipantsOpen(false)} style={{ background: '#f0f0f0', color: '#222', border: '1px solid #ddd', borderRadius: 8, padding: '0.25rem 0.55rem', cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0, flex: 1 }}>
+              <div style={{ fontWeight: 700, color: '#222' }}>Participants acceptés</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', paddingRight: 2 }}>
+                {(jobParticipants[editingId] || []).map((p) => {
+                  const key = `${editingId}:${p.userId}`;
+                  const existingIds = new Set((jobParticipants[editingId] || []).map(pp => pp.userId));
+                  const options = allUsers
+                    .filter(u => !existingIds.has(u.uid) || u.uid === p.userId)
+                    .map(u => ({ value: u.uid, label: (u.displayName || u.email || u.uid) as string }));
+                  return (
+                    <div key={key} style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8, alignItems: 'stretch' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600 }}>{p.displayName || p.email || p.userId}</div>
+                        <div style={{ color: '#555', fontSize: '.9rem' }}>{p.email}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          title="Retirer"
+                          aria-label="Retirer le participant"
+                          onClick={async () => {
+                            if (participantBusy) return;
+                            const ok = window.confirm('Retirer ce participant du job ?');
+                            if (!ok) return;
+                            try {
+                              setParticipantBusy(key);
+                              const db = getFirestoreDb();
+                              await deleteDoc(doc(db, `jobs/${editingId}/applications/${p.userId}`));
+                            } catch (e) {
+                              alert('Suppression impossible.');
+                              console.error(e);
+                            } finally {
+                              setParticipantBusy(null);
+                            }
+                          }}
+                          style={{ background: '#fff', border: '1px solid #ddd', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                        <div style={{ flex: '1 1 220px', minWidth: 180 }}>
+                          <ComboSearch
+                            value={replaceSelection[key] || ''}
+                            onChange={(v) => setReplaceSelection(prev => ({ ...prev, [key]: v }))}
+                            options={options}
+                            placeholder="Remplacer par…"
+                            maxItems={5}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const newUid = replaceSelection[key];
+                            if (!newUid) { alert('Choisissez un utilisateur.'); return; }
+                            if (participantBusy) return;
+                            try {
+                              setParticipantBusy(key);
+                              const db = getFirestoreDb();
+                              if (newUid === p.userId) return;
+                              const newDocSnap = await getDoc(doc(db, `jobs/${editingId}/applications/${newUid}`));
+                              if (newDocSnap.exists()) { alert('Cet utilisateur est déjà participant.'); return; }
+                              const userSnap = await getDoc(doc(db, 'users', newUid));
+                              const udata = userSnap.data() as { displayName?: string | null; email?: string | null } | undefined;
+                              const displayName = (udata?.displayName ?? null) || null;
+                              const email = (udata?.email ?? null) || null;
+                              await deleteDoc(doc(db, `jobs/${editingId}/applications/${p.userId}`));
+                              await setDoc(doc(db, `jobs/${editingId}/applications/${newUid}`), {
+                                displayName: displayName || undefined,
+                                email: email || undefined,
+                                replacedAt: serverTimestamp(),
+                              });
+                              setReplaceSelection(prev => ({ ...prev, [key]: '' }));
+                            } catch (e) {
+                              alert('Remplacement impossible.');
+                              console.error(e);
+                            } finally {
+                              setParticipantBusy(null);
+                            }
+                          }}
+                          style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.7rem', cursor: 'pointer' }}
+                        >
+                          Appliquer
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {(jobParticipants[editingId] || []).length === 0 && (
+                  <div style={{ color: '#666' }}>Aucun participant pour l'instant.</div>
+                )}
+              </div>
+              <div style={{ marginTop: 'auto', paddingTop: 8, borderTop: '1px dashed #eee' }}>
+                <div style={{ fontWeight: 700, color: '#222', marginBottom: 8 }}>Ajouter un participant</div>
+                {(() => {
+                  if (!editingId) return null;
+                  const existingIds = new Set((jobParticipants[editingId] || []).map(pp => pp.userId));
+                  const options = allUsers
+                    .filter(u => !existingIds.has(u.uid))
+                    .map(u => ({ value: u.uid, label: (u.displayName || u.email || u.uid) as string }));
+                  return (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ flex: '1 1 240px', minWidth: 180 }}>
+                        <ComboSearch
+                          value={replaceSelection[`${editingId}:__new__`] || ''}
+                          onChange={(v) => setReplaceSelection(prev => ({ ...prev, [`${editingId}:__new__`]: v }))}
+                          options={options}
+                          placeholder="Choisir un utilisateur…"
+                          maxItems={5}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!editingId) return;
+                          const newUid = replaceSelection[`${editingId}:__new__`];
+                          if (!newUid) { alert('Choisissez un utilisateur.'); return; }
+                          if (participantBusy) return;
+                          try {
+                            setParticipantBusy(`${editingId}:__new__`);
+                            const db = getFirestoreDb();
+                            const existSnap = await getDoc(doc(db, `jobs/${editingId}/applications/${newUid}`));
+                            if (existSnap.exists()) { alert('Cet utilisateur est déjà participant.'); return; }
+                            const userSnap = await getDoc(doc(db, 'users', newUid));
+                            const udata = userSnap.data() as { displayName?: string | null; email?: string | null } | undefined;
+                            await setDoc(doc(db, `jobs/${editingId}/applications/${newUid}`), {
+                              displayName: udata?.displayName || undefined,
+                              email: udata?.email || undefined,
+                              addedAt: serverTimestamp(),
+                            });
+                            setReplaceSelection(prev => ({ ...prev, [`${editingId}:__new__`]: '' }));
+                          } catch (e) {
+                            alert('Ajout impossible.');
+                            console.error(e);
+                          } finally {
+                            setParticipantBusy(null);
+                          }
+                        }}
+                        style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer', fontWeight: 600 }}
+                      >
+                        Ajouter
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
