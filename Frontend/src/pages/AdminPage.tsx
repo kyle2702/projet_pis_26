@@ -223,7 +223,7 @@ const AdminPage: React.FC = () => {
               totals.set(finalUid, (totals.get(finalUid) || 0) + durationHours);
             });
           } catch {
-            // ignorer
+            // ignorer 
           }
         }
 
