@@ -364,7 +364,6 @@ const ProfilePage: React.FC = () => {
               <tr>
                 <th style={styles.th}>Titre</th>
                 <th style={styles.th}>Début</th>
-                <th style={styles.th}>Fin</th>
                 <th style={styles.th}>Heures</th>
               </tr>
             </thead>
@@ -373,7 +372,6 @@ const ProfilePage: React.FC = () => {
                 <tr key={j.id}>
                   <td style={styles.td}>{j.title}</td>
                   <td style={styles.td}>{j.begin}</td>
-                  <td style={styles.td}>{j.end}</td>
                   <td style={styles.td}>{(j.minutes/60).toFixed(2)}</td>
                 </tr>
               ))}
