@@ -67,7 +67,7 @@ const HackedScreen: React.FC<HackedScreenProps> = ({ onUnlock }) => {
 
     if (attemptsLeft <= 0) return;
 
-    if (password === 'Tr@Hi$oN!') {
+    if (password === 'Tr@H1$0N!') {
       localStorage.removeItem(attemptsKey); // Réinitialise les essais en cas de succès
       onUnlock();
     } else {
