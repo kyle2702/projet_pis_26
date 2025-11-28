@@ -147,6 +147,7 @@ const ProfilePage: React.FC = () => {
       }
     })();
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, user?.displayName]);
 
   useEffect(() => {

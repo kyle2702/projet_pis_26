@@ -1,7 +1,8 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import './App.css';
 import Layout from './components/Layout';
+import HackedScreen from './components/HackedScreen';
 const HomePage = lazy(() => import('./pages/HomePage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const JobsPage = lazy(() => import('./pages/JobsPage'));
@@ -47,6 +48,17 @@ const router = createBrowserRouter([
 ]);
 
 function App() {
+  // Mettre à `true` pour activer l'écran de hack
+  const [isHacked, setIsHacked] = useState(true); 
+
+  const handleUnlock = () => {
+    setIsHacked(false);
+  };
+
+  if (isHacked) {
+    return <HackedScreen onUnlock={handleUnlock} />;
+  }
+
   return (
     <AuthProvider>
       <ErrorBoundary>
@@ -59,3 +71,4 @@ function App() {
 }
 
 export default App;
+
