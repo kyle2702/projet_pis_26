@@ -108,7 +108,7 @@ const HackedScreen: React.FC<HackedScreenProps> = ({ onUnlock }) => {
     } else if (unlockingStep === 'granted') {
         const timeout = setTimeout(() => {
             onUnlock();
-        }, 2000);
+        }, 10000);
         return () => clearTimeout(timeout);
     }
   }, [unlockingStep, onUnlock]);
