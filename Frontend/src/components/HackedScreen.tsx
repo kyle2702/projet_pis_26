@@ -11,6 +11,8 @@ const targetDate = new Date('2025-11-29T23:59:00').getTime();
 
 const HackedScreen: React.FC<HackedScreenProps> = ({ onUnlock }) => {
   const [password, setPassword] = useState('');
+  const [answer, setAnswer] = useState('');
+  const [step, setStep] = useState<'password' | 'question'>('password');
   const [error, setError] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -113,24 +115,39 @@ const HackedScreen: React.FC<HackedScreenProps> = ({ onUnlock }) => {
     }
   }, [unlockingStep, onUnlock]);
 
+  const handleError = () => {
+      const newAttempts = attemptsLeft - 1;
+      setAttemptsLeft(newAttempts);
+      localStorage.setItem(attemptsKey, newAttempts.toString());
+      setError(true);
+      if (step === 'password') setPassword('');
+      else setAnswer('');
+      
+      if (newAttempts <= 0) {
+        setTimeLeft(0); // Arrête le timer visuellement
+        if(timerRef.current) clearInterval(timerRef.current); // Arrête le timer en arrière-plan
+      }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (attemptsLeft <= 0) return;
 
-    if (password === 'Tr@H1$0N!') {
-      localStorage.removeItem(attemptsKey); // Réinitialise les essais en cas de succès
-      setUnlockingStep('code'); // Démarre l'animation
+    if (step === 'password') {
+        if (password === 'Tr@H1$0N!') {
+            setStep('question');
+            setError(false);
+        } else {
+            handleError();
+        }
     } else {
-      const newAttempts = attemptsLeft - 1;
-      setAttemptsLeft(newAttempts);
-      localStorage.setItem(attemptsKey, newAttempts.toString());
-      setError(true);
-      setPassword('');
-      if (newAttempts <= 0) {
-        setTimeLeft(0); // Arrête le timer visuellement
-        if(timerRef.current) clearInterval(timerRef.current); // Arrête le timer en arrière-plan
-      }
+        if (answer === '24/09-2002') {
+            localStorage.removeItem(attemptsKey); // Réinitialise les essais en cas de succès
+            setUnlockingStep('code'); // Démarre l'animation
+        } else {
+            handleError();
+        }
     }
   };
 
@@ -260,33 +277,62 @@ const HackedScreen: React.FC<HackedScreenProps> = ({ onUnlock }) => {
           You have been hacked!
         </h1>
         <p style={{ marginBottom: '25px', fontSize: 'clamp(0.9rem, 3vw, 1rem)' }}>
-            To regain access, please enter the password.
+            {step === 'password' 
+                ? "To regain access, please enter the password." 
+                : "Quelle est la date de naissance de Sajou ?"}
         </p>
         <form onSubmit={handleSubmit}>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              setError(false);
-            }}
-            placeholder="password"
-            disabled={attemptsLeft <= 0}
-            style={{
-              width: '100%',
-              padding: '12px',
-              marginBottom: '15px',
-              backgroundColor: '#111',
-              border: `1px solid ${error ? 'red' : 'lime'}`,
-              borderRadius: '5px',
-              color: 'lime',
-              textAlign: 'center',
-              outline: 'none',
-              boxSizing: 'border-box',
-              cursor: attemptsLeft <= 0 ? 'not-allowed' : 'text',
-              opacity: attemptsLeft <= 0 ? 0.5 : 1
-            }}
-          />
+          {step === 'password' ? (
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError(false);
+                }}
+                placeholder="password"
+                disabled={attemptsLeft <= 0}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  marginBottom: '15px',
+                  backgroundColor: '#111',
+                  border: `1px solid ${error ? 'red' : 'lime'}`,
+                  borderRadius: '5px',
+                  color: 'lime',
+                  textAlign: 'center',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  cursor: attemptsLeft <= 0 ? 'not-allowed' : 'text',
+                  opacity: attemptsLeft <= 0 ? 0.5 : 1
+                }}
+              />
+          ) : (
+              <input
+                type="text"
+                value={answer}
+                onChange={(e) => {
+                  setAnswer(e.target.value);
+                  setError(false);
+                }}
+                placeholder="JJ/MM-AAAA"
+                disabled={attemptsLeft <= 0}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  marginBottom: '15px',
+                  backgroundColor: '#111',
+                  border: `1px solid ${error ? 'red' : 'lime'}`,
+                  borderRadius: '5px',
+                  color: 'lime',
+                  textAlign: 'center',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  cursor: attemptsLeft <= 0 ? 'not-allowed' : 'text',
+                  opacity: attemptsLeft <= 0 ? 0.5 : 1
+                }}
+              />
+          )}
           <button
             type="submit"
             disabled={attemptsLeft <= 0}
