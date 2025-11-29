@@ -12,7 +12,7 @@ const targetDate = new Date('2025-11-29T23:59:00').getTime();
 const HackedScreen: React.FC<HackedScreenProps> = ({ onUnlock }) => {
   const [password, setPassword] = useState('');
   const [answer, setAnswer] = useState('');
-  const [step, setStep] = useState<'password' | 'question'>('password');
+  const [step, setStep] = useState<'password' | 'question' | 'question2'>('password');
   const [error, setError] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -141,8 +141,16 @@ const HackedScreen: React.FC<HackedScreenProps> = ({ onUnlock }) => {
         } else {
             handleError();
         }
-    } else {
+    } else if (step === 'question') {
         if (answer === '24/09-2002') {
+            setStep('question2');
+            setAnswer('');
+            setError(false);
+        } else {
+            handleError();
+        }
+    } else {
+        if (answer.toLowerCase() === 'christophe lambert') {
             localStorage.removeItem(attemptsKey); // Réinitialise les essais en cas de succès
             setUnlockingStep('code'); // Démarre l'animation
         } else {
@@ -279,7 +287,9 @@ const HackedScreen: React.FC<HackedScreenProps> = ({ onUnlock }) => {
         <p style={{ marginBottom: '25px', fontSize: 'clamp(0.9rem, 3vw, 1rem)' }}>
             {step === 'password' 
                 ? "To regain access, please enter the password." 
-                : "Quelle est la date de naissance de Sajou ?"}
+                : step === 'question'
+                ? "Quelle est la date de naissance de Sajou ?"
+                : "Quel est le nom de Daguet sur Facebook ?"}
         </p>
         <form onSubmit={handleSubmit}>
           {step === 'password' ? (
@@ -315,7 +325,7 @@ const HackedScreen: React.FC<HackedScreenProps> = ({ onUnlock }) => {
                   setAnswer(e.target.value);
                   setError(false);
                 }}
-                placeholder="JJ/MM-AAAA"
+                placeholder={step === 'question' ? "JJ/MM-AAAA" : "Prénom Nom"}
                 disabled={attemptsLeft <= 0}
                 style={{
                   width: '100%',
