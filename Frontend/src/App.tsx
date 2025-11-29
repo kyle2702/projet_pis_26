@@ -49,7 +49,7 @@ const router = createBrowserRouter([
 
 function App() {
   // Mettre à `true` pour activer l'écran de hack
-  const [isHacked, setIsHacked] = useState(true); 
+  const [isHacked, setIsHacked] = useState(false); 
 
   const handleUnlock = () => {
     setIsHacked(false);
