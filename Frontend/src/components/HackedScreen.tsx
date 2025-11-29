@@ -6,8 +6,8 @@ interface HackedScreenProps {
 
 const attemptsKey = 'hackedAttemptsLeft';
 const maxAttempts = 10;
-// Date cible : 30 novembre 2025 à 11h00
-const targetDate = new Date('2025-11-30T11:00:00').getTime();
+// Date cible : 29 novembre 2025 à 23h59
+const targetDate = new Date('2025-11-29T23:59:00').getTime();
 
 const HackedScreen: React.FC<HackedScreenProps> = ({ onUnlock }) => {
   const [password, setPassword] = useState('');
