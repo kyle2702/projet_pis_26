@@ -91,38 +91,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Init FCM (meilleur effort) + demande de permission si nécessaire
         try {
-          const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+          // Vérifier si les service workers sont supportés
+          if (!('serviceWorker' in navigator)) {
+            console.info('Service Workers non supportés par ce navigateur');
+            return;
+          }
+
+          const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+            scope: '/',
+            updateViaCache: 'none'
+          });
           console.info('SW registered for FCM:', swReg.scope);
+          
+          // Attendre que le SW soit activé
+          if (swReg.installing) {
+            await new Promise((resolve) => {
+              swReg.installing!.addEventListener('statechange', (e) => {
+                if ((e.target as ServiceWorker).state === 'activated') {
+                  resolve(null);
+                }
+              });
+            });
+          }
+
           let allowed = false;
           if (typeof Notification !== 'undefined') {
             if (Notification.permission === 'granted') {
               allowed = true;
+              console.info('Permission notifications déjà accordée');
             } else if (Notification.permission === 'default') {
-              const res = await Notification.requestPermission().catch(() => 'denied');
+              console.info('Demande de permission notifications...');
+              const res = await Notification.requestPermission().catch((err) => {
+                console.warn('Erreur lors de la demande de permission:', err);
+                return 'denied';
+              });
               allowed = res === 'granted';
+              console.info('Résultat permission:', res);
             } else {
               console.info('Notifications bloquées par le navigateur (denied).');
             }
           }
+          
           if (allowed) {
+            console.info('Initialisation du token FCM...');
             const tok = await initMessagingAndGetToken(u.uid);
-            console.info('FCM token presence:', !!tok);
+            console.info('FCM token obtenu:', !!tok);
+            
             if (tok) {
+              console.info('Configuration de l\'écoute des messages en premier plan...');
               unsubMsg = await listenForegroundMessages((payload) => {
                 const title = payload.notification?.title || payload.data?.title;
                 const body = payload.notification?.body || payload.data?.body;
+                console.info('Notification reçue en premier plan:', { title, body });
                 if (title) console.info('Notification:', title, body);
               });
+              console.info('Écoute des messages configurée avec succès');
             } else if (isWebPushSupported() && t) {
               // Fallback Web Push pour iOS/Safari
+              console.info('Tentative de fallback Web Push...');
               const ok = await subscribeWebPush(u.uid, t);
               console.info('Web Push subscription:', ok);
+            } else {
+              console.warn('Impossible d\'obtenir le token FCM et Web Push non supporté');
             }
           } else {
             console.info('Permission notifications non accordée; token/subscription non enregistrés.');
           }
         } catch (e) {
-          console.info('FCM/Web Push non initialisé (permission refusée / non supporté / SW).', e);
+          console.error('Erreur lors de l\'initialisation FCM/Web Push:', e);
+          console.error('Détails de l\'erreur:', e instanceof Error ? e.message : String(e));
         }
       } else {
         // Déconnexion: nettoyage (non-bloquant pour l'UI)
