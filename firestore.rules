@@ -71,6 +71,16 @@ service cloud.firestore {
       allow delete: if isUser(userId) || isAdmin();
     }
 
+    // Ventes de la caisse (bar)
+    match /sales/{saleId} {
+      // Tout le monde peut créer une vente (la page caisse est privée par routing)
+      allow create: if true;
+      // Lecture autorisée pour tout le monde (pour afficher le récapitulatif)
+      allow read: if true;
+      // Seuls les admins peuvent modifier ou supprimer
+      allow update, delete: if isAdmin();
+    }
+
     // Fallback deny
     match /{document=**} {
       allow read, write: if false;
