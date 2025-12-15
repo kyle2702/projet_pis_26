@@ -76,30 +76,55 @@ const AdminPage: React.FC = () => {
         readBy: []
       });
       
-      // Optionnel : envoyer aussi via FCM si l'API backend est configurée
+      console.log('[Test] Notification créée dans Firestore');
+      
+      // Envoyer aussi via FCM si l'API backend est configurée
       try {
         const apiUrl = import.meta.env.VITE_NOTIFY_API_URL as string | undefined;
         if (apiUrl && token) {
-          await fetch(`${apiUrl.replace(/\/$/, '')}/notify/test`, {
+          console.log('[Test] Envoi via backend:', apiUrl);
+          const response = await fetch(`${apiUrl.replace(/\/$/, '')}/notify/test`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({
-              userId: user.uid,
               title: testNotifTitle,
               body: testNotifBody
             })
-          }).catch(() => {
-            // Si l'endpoint n'existe pas, ce n'est pas grave
           });
+          
+          if (response.ok) {
+            const result = await response.json();
+            console.log('[Test] Résultat backend:', result);
+            
+            let statusMsg = '✓ Notification test envoyée !\n';
+            if (result.sentFCM) statusMsg += '• FCM: ✓ Envoyé\n';
+            else if (result.hasToken) statusMsg += '• FCM: ⚠️ Token trouvé mais non envoyé\n';
+            else statusMsg += '• FCM: ✗ Aucun token enregistré\n';
+            
+            if (result.sentWebPush) statusMsg += '• Web Push: ✓ Envoyé\n';
+            else if (result.hasSub) statusMsg += '• Web Push: ⚠️ Subscription trouvée mais non envoyée\n';
+            else statusMsg += '• Web Push: ✗ Aucune subscription\n';
+            
+            statusMsg += '\nVérifiez la cloche de notification.';
+            
+            setTestNotifMessage(statusMsg);
+          } else {
+            const error = await response.text();
+            console.error('[Test] Erreur backend:', error);
+            setTestNotifMessage(`⚠️ Notification Firestore créée mais erreur backend: ${error}`);
+          }
+        } else {
+          console.log('[Test] Backend non configuré, notification Firestore seule');
+          setTestNotifMessage('✓ Notification créée dans Firestore uniquement (backend non configuré).\nVérifiez la cloche de notification.');
         }
-      } catch {
-        // Ignoré - la notification Firestore suffit
+      } catch (e) {
+        console.error('[Test] Erreur backend:', e);
+        setTestNotifMessage('✓ Notification créée dans Firestore.\n⚠️ Erreur lors de l\'envoi FCM (backend inaccessible).');
       }
       
-      setTestNotifMessage('✓ Notification test envoyée ! Vérifiez la cloche de notification.');
       setTestNotifLoading(false);
     } catch (e) {
       console.error('Erreur envoi notification test:', e);
@@ -535,10 +560,13 @@ const AdminPage: React.FC = () => {
             <div style={{
               padding: '0.75rem',
               borderRadius: '8px',
-              backgroundColor: testNotifMessage.startsWith('✓') ? '#e8f5e9' : '#ffebee',
-              color: testNotifMessage.startsWith('✓') ? '#2e7d32' : '#c62828',
-              fontSize: '0.9rem',
-              fontWeight: 500
+              backgroundColor: testNotifMessage.startsWith('✓') ? '#e8f5e9' : testNotifMessage.startsWith('⚠️') ? '#fff3e0' : '#ffebee',
+              color: testNotifMessage.startsWith('✓') ? '#2e7d32' : testNotifMessage.startsWith('⚠️') ? '#e65100' : '#c62828',
+              fontSize: '0.85rem',
+              fontWeight: 500,
+              whiteSpace: 'pre-line',
+              fontFamily: 'monospace',
+              lineHeight: 1.6
             }}>
               {testNotifMessage}
             </div>

@@ -382,5 +382,92 @@ app.post('/webpush/unsubscribe', requireAuth, async (req: Request, res: Response
   }
 });
 
+// Endpoint de test: envoie une notification uniquement à l'utilisateur connecté
+app.post('/notify/test', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const uid = (req as any).uid as string;
+    const { title, body } = req.body || {};
+    if (!title) return res.status(400).json({ error: 'Missing title' });
+    
+    const notifTitle = String(title);
+    const notifBody = String(body || '');
+    const link = '/';
+    const nid = `test:${Date.now()}`;
+    
+    // Récupérer le token FCM de l'utilisateur
+    const tokenDoc = await db.collection('fcmTokens').doc(uid).get();
+    const token = tokenDoc.exists ? (tokenDoc.data() as any)?.token as string | undefined : undefined;
+    
+    // Récupérer la subscription Web Push de l'utilisateur
+    const subDoc = WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY ? await db.collection('webPushSubs').doc(uid).get() : null;
+    const sub: PushSubscription | undefined = subDoc && subDoc.exists ? (subDoc.data() as any)?.subscription as PushSubscription | undefined : undefined;
+    
+    let sentFCM = false;
+    let sentWebPush = false;
+    
+    // Envoyer via FCM si le token existe et pas de Web Push
+    if (token && !sub) {
+      try {
+        await admin.messaging().send({
+          token,
+          data: {
+            title: notifTitle,
+            body: notifBody,
+            link,
+            nid,
+            type: 'test',
+          },
+          webpush: { 
+            fcmOptions: { link },
+          },
+        });
+        sentFCM = true;
+        console.log(`[Test] FCM envoyé à ${uid}`);
+      } catch (e: any) {
+        console.error('[Test] Erreur FCM:', e);
+        // Si le token est invalide, le supprimer
+        const invalidCodes = new Set(['messaging/invalid-registration-token', 'messaging/registration-token-not-registered']);
+        if (e.code && invalidCodes.has(e.code)) {
+          await db.collection('fcmTokens').doc(uid).delete();
+          console.log(`[Test] Token FCM invalide supprimé pour ${uid}`);
+        }
+      }
+    }
+    
+    // Envoyer via Web Push si la subscription existe
+    if (sub && WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
+      try {
+        await webpush.sendNotification(sub, JSON.stringify({
+          title: notifTitle,
+          body: notifBody,
+          link,
+          nid,
+        }));
+        sentWebPush = true;
+        console.log(`[Test] Web Push envoyé à ${uid}`);
+      } catch (e: any) {
+        console.error('[Test] Erreur Web Push:', e);
+        const code = e?.statusCode;
+        if (code === 404 || code === 410) {
+          await db.collection('webPushSubs').doc(uid).delete();
+          console.log(`[Test] Subscription Web Push invalide supprimée pour ${uid}`);
+        }
+      }
+    }
+    
+    return res.json({ 
+      ok: true, 
+      sentFCM, 
+      sentWebPush,
+      hasToken: !!token,
+      hasSub: !!sub,
+      message: sentFCM || sentWebPush ? 'Notification envoyée' : 'Aucun token/subscription trouvé'
+    });
+  } catch (e) {
+    console.error('[Test] Erreur:', e);
+    return res.status(500).json({ error: 'Internal error' });
+  }
+});
+
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`notify-api listening on :${port}`));
