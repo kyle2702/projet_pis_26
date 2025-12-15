@@ -93,21 +93,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           // Vérifier si les service workers sont supportés
           if (!('serviceWorker' in navigator)) {
-            console.info('Service Workers non supportés par ce navigateur');
+            console.warn('[FCM] Service Workers non supportés par ce navigateur');
             return;
           }
 
-          const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-            scope: '/',
-            updateViaCache: 'none'
-          });
-          console.info('SW registered for FCM:', swReg.scope);
-          
+          // Enregistrer le service worker (fonctionne en dev et prod)
+          let swReg = await navigator.serviceWorker.getRegistration('/');
+          if (!swReg) {
+            swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+              scope: '/',
+              updateViaCache: 'none'
+            });
+            console.log('[FCM] Service worker enregistré:', swReg.scope);
+          } else {
+            console.log('[FCM] Service worker déjà enregistré:', swReg.scope);
+            // Forcer la mise à jour si disponible
+            await swReg.update().catch(() => {});
+          }
+
           // Attendre que le SW soit activé
           if (swReg.installing) {
+            console.log('[FCM] Attente activation du service worker...');
             await new Promise((resolve) => {
               swReg.installing!.addEventListener('statechange', (e) => {
-                if ((e.target as ServiceWorker).state === 'activated') {
+                const state = (e.target as ServiceWorker).state;
+                console.log('[FCM] SW state:', state);
+                if (state === 'activated') {
                   resolve(null);
                 }
               });
@@ -118,44 +129,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (typeof Notification !== 'undefined') {
             if (Notification.permission === 'granted') {
               allowed = true;
-              console.info('Permission notifications déjà accordée');
+              console.log('[FCM] ✓ Permission notifications déjà accordée');
             } else if (Notification.permission === 'default') {
-              console.info('Demande de permission notifications...');
+              console.log('[FCM] Demande de permission notifications...');
               const res = await Notification.requestPermission().catch((err) => {
-                console.warn('Erreur lors de la demande de permission:', err);
+                console.error('[FCM] Erreur lors de la demande de permission:', err);
                 return 'denied';
               });
               allowed = res === 'granted';
-              console.info('Résultat permission:', res);
+              console.log(`[FCM] Résultat permission: ${res}`);
             } else {
-              console.info('Notifications bloquées par le navigateur (denied).');
+              console.warn('[FCM] ✗ Notifications bloquées par le navigateur (denied)');
             }
           }
-          
+
           if (allowed) {
-            console.info('Initialisation du token FCM...');
+            console.log('[FCM] Initialisation du token FCM...');
             const tok = await initMessagingAndGetToken(u.uid);
-            console.info('FCM token obtenu:', !!tok);
-            
             if (tok) {
-              console.info('Configuration de l\'écoute des messages en premier plan...');
+              console.log('[FCM] ✓ Token FCM obtenu et enregistré');
+              console.log('[FCM] Configuration de l\'écoute des messages en premier plan...');
               unsubMsg = await listenForegroundMessages((payload) => {
                 const title = payload.notification?.title || payload.data?.title;
                 const body = payload.notification?.body || payload.data?.body;
-                console.info('Notification reçue en premier plan:', { title, body });
-                if (title) console.info('Notification:', title, body);
+                console.log('[FCM] 📬 Notification reçue:', { title, body });
+                // Afficher une notification native si l'app est au premier plan
+                if (title && document.visibilityState === 'visible') {
+                  new Notification(title, { body: body || '', icon: '/logo_pionniers.avif' });
+                }
               });
-              console.info('Écoute des messages configurée avec succès');
-            } else if (isWebPushSupported() && t) {
-              // Fallback Web Push pour iOS/Safari
-              console.info('Tentative de fallback Web Push...');
-              const ok = await subscribeWebPush(u.uid, t);
-              console.info('Web Push subscription:', ok);
+              console.log('[FCM] ✓ Écoute des messages configurée avec succès');
             } else {
-              console.warn('Impossible d\'obtenir le token FCM et Web Push non supporté');
+              console.warn('[FCM] ✗ Impossible d\'obtenir le token FCM');
+              if (isWebPushSupported() && t) {
+                // Fallback Web Push pour iOS/Safari
+                console.log('[WebPush] Tentative de fallback Web Push...');
+                const ok = await subscribeWebPush(u.uid, t);
+                console.log(`[WebPush] ${ok ? '✓' : '✗'} Subscription Web Push: ${ok}`);
+              } else {
+                console.warn('[Notifications] ✗ Aucun système de notification disponible');
+              }
             }
           } else {
-            console.info('Permission notifications non accordée; token/subscription non enregistrés.');
+            console.warn('[FCM] ✗ Permission non accordée; notifications désactivées');
           }
         } catch (e) {
           console.error('Erreur lors de l\'initialisation FCM/Web Push:', e);

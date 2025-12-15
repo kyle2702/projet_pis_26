@@ -9,7 +9,6 @@ const JobsPage = lazy(() => import('./pages/JobsPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
-const CaissePage = lazy(() => import('./pages/CaissePage'));
 
 import { AuthProvider } from './contexts/AuthContext';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -42,10 +41,6 @@ const router = createBrowserRouter([
       {
         path: 'admin',
         element: <AdminPage />,
-      },
-      {
-        path: 'caisse',
-        element: <CaissePage />,
       }
     ],
   },

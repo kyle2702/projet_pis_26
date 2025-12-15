@@ -30,6 +30,12 @@ const AdminPage: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // États pour les tests de notifications
+  const [testNotifTitle, setTestNotifTitle] = useState('Notification de test');
+  const [testNotifBody, setTestNotifBody] = useState('Ceci est un test de notification envoyé uniquement à moi-même');
+  const [testNotifLoading, setTestNotifLoading] = useState(false);
+  const [testNotifMessage, setTestNotifMessage] = useState<string | null>(null);
   // Récupère les candidatures en attente
   useEffect(() => {
     if (isLoading) return;
@@ -49,6 +55,58 @@ const AdminPage: React.FC = () => {
     };
     fetchApplications();
   }, [isLoading]);
+
+  // Envoyer une notification de test à soi-même
+  const sendTestNotification = async () => {
+    if (!user) return;
+    setTestNotifLoading(true);
+    setTestNotifMessage(null);
+    
+    try {
+      const db = getFirestoreDb();
+      const { addDoc, serverTimestamp } = await import('firebase/firestore');
+      
+      // Créer une notification directement dans Firestore
+      await addDoc(collection(db, 'notifications'), {
+        userId: user.uid,
+        type: 'test',
+        title: testNotifTitle,
+        description: testNotifBody,
+        createdAt: serverTimestamp(),
+        readBy: []
+      });
+      
+      // Optionnel : envoyer aussi via FCM si l'API backend est configurée
+      try {
+        const apiUrl = import.meta.env.VITE_NOTIFY_API_URL as string | undefined;
+        if (apiUrl && token) {
+          await fetch(`${apiUrl.replace(/\/$/, '')}/notify/test`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              userId: user.uid,
+              title: testNotifTitle,
+              body: testNotifBody
+            })
+          }).catch(() => {
+            // Si l'endpoint n'existe pas, ce n'est pas grave
+          });
+        }
+      } catch {
+        // Ignoré - la notification Firestore suffit
+      }
+      
+      setTestNotifMessage('✓ Notification test envoyée ! Vérifiez la cloche de notification.');
+      setTestNotifLoading(false);
+    } catch (e) {
+      console.error('Erreur envoi notification test:', e);
+      setTestNotifMessage('✗ Erreur lors de l\'envoi de la notification');
+      setTestNotifLoading(false);
+    }
+  };
 
   // Accepter/refuser une candidature
   const handleAppStatus = async (id: string, status: 'accepted' | 'refused') => {
@@ -396,7 +454,99 @@ const AdminPage: React.FC = () => {
         </tbody>
       </table>
 
-      <h2 style={{...styles.h2, marginTop: 40}}>Demandes de candidature</h2>
+      {/* Section de test des notifications */}
+      <div style={{ marginTop: 60, maxWidth: 500, width: '100%', padding: '0 20px' }}>
+        <h2 style={{ ...styles.h2, marginBottom: '1rem' }}>🔔 Tester les notifications</h2>
+        <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '1rem' }}>
+          Envoyez une notification test à vous-même sans déranger les autres utilisateurs.
+        </p>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'left' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, color: '#333' }}>
+              Titre de la notification
+            </label>
+            <input
+              type="text"
+              value={testNotifTitle}
+              onChange={(e) => setTestNotifTitle(e.target.value)}
+              placeholder="Titre..."
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                borderRadius: '8px',
+                border: '1px solid #ddd',
+                fontSize: '1rem',
+                fontFamily: 'inherit'
+              }}
+            />
+          </div>
+          
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, color: '#333' }}>
+              Message
+            </label>
+            <textarea
+              value={testNotifBody}
+              onChange={(e) => setTestNotifBody(e.target.value)}
+              placeholder="Contenu de la notification..."
+              rows={3}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                borderRadius: '8px',
+                border: '1px solid #ddd',
+                fontSize: '1rem',
+                fontFamily: 'inherit',
+                resize: 'vertical'
+              }}
+            />
+          </div>
+          
+          <button
+            onClick={sendTestNotification}
+            disabled={testNotifLoading || !testNotifTitle.trim()}
+            style={{
+              padding: '0.875rem 1.5rem',
+              backgroundColor: testNotifLoading || !testNotifTitle.trim() ? '#ccc' : '#646cff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '1rem',
+              fontWeight: 600,
+              cursor: testNotifLoading || !testNotifTitle.trim() ? 'not-allowed' : 'pointer',
+              transition: 'background-color 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              if (!testNotifLoading && testNotifTitle.trim()) {
+                e.currentTarget.style.backgroundColor = '#535ac8';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!testNotifLoading && testNotifTitle.trim()) {
+                e.currentTarget.style.backgroundColor = '#646cff';
+              }
+            }}
+          >
+            {testNotifLoading ? '⏳ Envoi en cours...' : '📤 Envoyer la notification test'}
+          </button>
+          
+          {testNotifMessage && (
+            <div style={{
+              padding: '0.75rem',
+              borderRadius: '8px',
+              backgroundColor: testNotifMessage.startsWith('✓') ? '#e8f5e9' : '#ffebee',
+              color: testNotifMessage.startsWith('✓') ? '#2e7d32' : '#c62828',
+              fontSize: '0.9rem',
+              fontWeight: 500
+            }}>
+              {testNotifMessage}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <h2 style={{...styles.h2, marginTop: 60}}>Demandes de candidature</h2>
       {appLoading ? <div>Chargement des candidatures...</div> : appError ? <div>{appError}</div> : (
         <div style={styles.scrollBox}>
           <table style={{ ...styles.table, margin: 0, boxShadow: 'none' }}>

@@ -32,18 +32,30 @@ export async function initMessagingAndGetToken(userId: string): Promise<string |
   }
 
   try {
-    const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: await navigator.serviceWorker.ready });
+    console.log('[FCM] Attente du service worker ready...');
+    const swReg = await navigator.serviceWorker.ready;
+    console.log('[FCM] Service worker ready, demande du token...');
+    
+    const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swReg });
     if (token) {
+      console.log('[FCM] Token obtenu, enregistrement dans Firestore...');
       const db = getFirestore(app);
       const ref = doc(db, 'fcmTokens', userId);
       await setDoc(ref, {
         token,
         updatedAt: serverTimestamp(),
       }, { merge: true });
+      console.log('[FCM] ✓ Token enregistré dans Firestore');
       return token;
+    } else {
+      console.warn('[FCM] getToken a retourné un token vide');
     }
   } catch (e) {
-    console.warn('Impossible d\'obtenir le token FCM:', e);
+    console.error('[FCM] ✗ Erreur lors de l\'obtention du token:', e);
+    if (e instanceof Error) {
+      console.error('[FCM] Message d\'erreur:', e.message);
+      console.error('[FCM] Stack:', e.stack);
+    }
   }
   return null;
 }

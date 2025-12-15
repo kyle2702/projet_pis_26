@@ -12,13 +12,29 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// Importer Firebase SDK v10.14.0 (compatible avec Firebase v12.x client)
 try {
-  importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
-  importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
-  // En production (Firebase Hosting), ce script initialise automatiquement l'app
-  importScripts('/__/firebase/init.js?useEmulator=false');
+  importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js');
+  importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-messaging-compat.js');
 } catch (e) {
-  // En dev local (Vite), ce script n'existe pas: on passe en mode dégradé.
+  console.error('[SW] Erreur chargement Firebase SDK:', e);
+}
+
+// Initialiser Firebase avec la config
+try {
+  if (typeof firebase !== 'undefined' && firebase.apps.length === 0) {
+    firebase.initializeApp({
+      apiKey: "AIzaSyD8NyhtF__OchsqE5LbaNmIZNnjg_JMSfY",
+      authDomain: "pionniers-26-a4449.firebaseapp.com",
+      projectId: "pionniers-26-a4449",
+      storageBucket: "pionniers-26-a4449.appspot.com",
+      messagingSenderId: "802024215147",
+      appId: "1:802024215147:web:504ed6ab70fcd27ccdd72e"
+    });
+    console.log('[SW] Firebase initialisé avec succès');
+  }
+} catch (e) {
+  console.error('[SW] Erreur initialisation Firebase:', e);
 }
 
 let messaging = null;
