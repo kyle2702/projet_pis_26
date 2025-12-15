@@ -20,22 +20,23 @@ try {
   console.error('[SW] Erreur chargement Firebase SDK:', e);
 }
 
-// Initialiser Firebase avec la config
-try {
-  if (typeof firebase !== 'undefined' && firebase.apps.length === 0) {
-    firebase.initializeApp({
-      apiKey: "AIzaSyD8NyhtF__OchsqE5LbaNmIZNnjg_JMSfY",
-      authDomain: "pionniers-26-a4449.firebaseapp.com",
-      projectId: "pionniers-26-a4449",
-      storageBucket: "pionniers-26-a4449.appspot.com",
-      messagingSenderId: "802024215147",
-      appId: "1:802024215147:web:504ed6ab70fcd27ccdd72e"
-    });
-    console.log('[SW] Firebase initialisé avec succès');
+// La config Firebase sera reçue depuis le client via postMessage
+let firebaseConfig = null;
+
+// Écouter les messages du client pour recevoir la config
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'FIREBASE_CONFIG') {
+    firebaseConfig = event.data.config;
+    try {
+      if (typeof firebase !== 'undefined' && firebase.apps.length === 0) {
+        firebase.initializeApp(firebaseConfig);
+        console.log('[SW] Firebase initialisé avec succès via postMessage');
+      }
+    } catch (e) {
+      console.error('[SW] Erreur initialisation Firebase:', e);
+    }
   }
-} catch (e) {
-  console.error('[SW] Erreur initialisation Firebase:', e);
-}
+});
 
 let messaging = null;
 // Déduplication simple en mémoire (cycle de vie court du SW):
