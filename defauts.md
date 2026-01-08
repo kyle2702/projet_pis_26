@@ -1,0 +1,69 @@
+m# Liste des défauts identifiés dans le code
+
+## Architecture & Design
+- 1 - A1 - [backend/src/api/user/augmentGraphqlSchema.ts:8](backend/src/api/user/augmentGraphqlSchema.ts#L8) - bankAccount est nullable dans Prisma mais exposé comme String obligatoire dans GraphQL, crashera si la valeur est null - Utiliser t.exposeString('bankAccount', { nullable: true })
+- 2 - A2 - [backend/src/api/transfer/transferRepository.ts:24-31](backend/src/api/transfer/transferRepository.ts#L24) - Aucune validation que sourceId ≠ targetId, permettant des transferts vers soi-même - Valider les IDs avant insertion et rejeter si sourceId === targetId
+- 3 - A3 - [backend/src/api/expense/expenseRepository.ts:3](backend/src/api/expense/expenseRepository.ts#L3) + [backend/src/api/transfer/transferRepository.ts:3](backend/src/api/transfer/transferRepository.ts#L3) + [backend/src/api/user/userRepository.ts:3](backend/src/api/user/userRepository.ts#L3) + [backend/src/api/auth/authService.ts:7](backend/src/api/auth/authService.ts#L7) - Chaque module crée sa propre instance de PrismaClient, multipliant les connexions DB - Créer un fichier prisma/client.ts avec une instance singleton unique
+- 4 - A4 - [backend/src/api/expense/expenseController.ts:18-30](backend/src/api/expense/expenseController.ts#L18) - Le controller fait la transformation des données (parseFloat, Number, new Date) au lieu de déléguer, mélange des responsabilités transport et logique métier - Déplacer la validation et transformation dans un service ou utiliser le middleware validateRequest
+- 5 - A5 - [backend/src/common/utils/httpHandlers.ts:7](backend/src/common/utils/httpHandlers.ts#L7) - Le middleware validateRequest est défini pour valider avec Zod mais n'est utilisé sur AUCUNE route - Appliquer ce middleware sur toutes les routes REST
+- 6 - A6 - [backend/src/api/expense/expenseRouter.ts + augmentGraphqlSchema.ts](backend/src/api/expense/expenseRouter.ts) - Incohérence: GraphQL a authentification + autorisation, REST n'a rien, créant deux sources de vérité avec des règles de sécurité différentes - Aligner les deux APIs ou choisir une seule surface
+- 7 - A7 - [backend/src/api/expense/expenseRepository.ts:23-32](backend/src/api/expense/expenseRepository.ts#L23) - Pas de validation que le payerId est inclus dans les participantIds, permettant des incohérences métier - Valider que le payeur est un participant
+
+## Data & Persistence
+- 8 - B1 - [backend/prisma/schema.prisma](backend/prisma/schema.prisma) - Type Float pour les montants (Expense.amount, Transfer.amount) introduit des erreurs d'arrondi pour l'argent (0.1 + 0.2 ≠ 0.3) - Utiliser Decimal ou stocker en centimes (Int)
+- 9 - B2 - [backend/prisma/schema.prisma:33](backend/prisma/schema.prisma#L33) - Relation many-to-many implicite pour participants pourrait permettre d'ajouter le même participant deux fois - Définir une table de liaison explicite avec contrainte d'unicité
+- 10 - B3 - [backend/src/api/expense/expenseRepository.ts:23-32](backend/src/api/expense/expenseRepository.ts#L23) - Pas de validation de l'existence des foreign keys (payerId, participantIds) avant insertion, Prisma throw une erreur cryptique - Vérifier l'existence des utilisateurs avant de créer l'expense
+- 11 - B4 - [backend/src/api/expense/expenseRepository.ts:5](backend/src/api/expense/expenseRepository.ts#L5) + tous les getAllXXX - Aucune pagination sur les requêtes de liste (findMany sans take/skip), avec des milliers d'enregistrements cela surchargera mémoire et réseau - Ajouter des paramètres take/skip pour la pagination
+- 12 - B5 - [backend/src/api/expense/expenseRepository.ts:23](backend/src/api/expense/expenseRepository.ts#L23) - Création d'Expense sans transaction, si l'opération échoue partiellement, données incohérentes - Utiliser prisma.$transaction() pour garantir l'atomicité
+
+## API & Backend
+- 13 - C1 - [backend/src/api/expense/expenseController.ts](backend/src/api/expense/expenseController.ts) + [backend/src/api/transfer/transferController.ts](backend/src/api/transfer/transferController.ts) + [backend/src/api/transaction/transactionController.ts](backend/src/api/transaction/transactionController.ts) + [backend/src/api/user/userController.ts](backend/src/api/user/userController.ts) - Aucun try-catch dans les controllers REST (sauf auth), si Prisma throw l'app crash - Ajouter try-catch et propager les erreurs avec next(err) pour utiliser l'error handler
+- 14 - C2 - [backend/src/api/auth/authController.ts:5-25](backend/src/api/auth/authController.ts#L5) - Toutes les erreurs retournent 400, même si c'est un ConflictError (409) ou AuthenticationError (401), les AppError ont un statusCode qui n'est pas utilisé - Utiliser err.statusCode si err instanceof AppError
+- 15 - C3 - [backend/src/api/expense/expenseController.ts:18-30](backend/src/api/expense/expenseController.ts#L18) + [backend/src/api/transfer/transferController.ts:18-28](backend/src/api/transfer/transferController.ts#L18) - Pas de validation des inputs avec Zod côté backend: parseFloat("abc") = NaN, new Date("invalid") = Invalid Date, participantIds peut ne pas être un array - Utiliser validateRequest middleware avec un schema Zod strict
+- 16 - C4 - [backend/src/api/expense/expenseController.ts:11](backend/src/api/expense/expenseController.ts#L11) + [backend/src/api/transfer/transferController.ts:11](backend/src/api/transfer/transferController.ts#L11) - Validation des paramètres de route absente: Number("abc") = NaN, Number("1.5") = 1.5 (pas entier), pas de vérification que l'ID est positif - Utiliser commonValidation.ts qui existe mais n'est jamais utilisé
+- 17 - C5 - [backend/src/common/middleware/errorHandler.ts:8-11](backend/src/common/middleware/errorHandler.ts#L8) - Error handler appelle next(err) mais personne ne gère après, Express crash ou renvoie sa page d'erreur par défaut - Retourner une vraie réponse HTTP avec res.status(err.statusCode).json()
+- 18 - C6 - [backend/src/common/middleware/rateLimiter.ts:10](backend/src/common/middleware/rateLimiter.ts#L10) - windowMs: 15 * 60 * env.COMMON_RATE_LIMIT_WINDOW_MS avec default 1000 = 900000ms = 15 minutes au lieu de la config attendue - Utiliser directement env.COMMON_RATE_LIMIT_WINDOW_MS ou clarifier la formule
+- 19 - C7 - [backend/src/api/auth/authService.ts:8](backend/src/api/auth/authService.ts#L8) - JWT_SECRET accédé via process.env directement au lieu d'utiliser envConfig.ts avec Zod, pas de validation de longueur minimale - Ajouter JWT_SECRET dans envConfig.ts avec validation Zod (min length 32)
+- 20 - C8 - [backend/src/graphql/errorFormatter.ts:49](backend/src/graphql/errorFormatter.ts#L49) - process.env.NODE_ENV accédé directement alors que partout ailleurs on utilise env.isProduction/isDevelopment - Utiliser env.isProduction pour la cohérence
+
+## Frontend & Client
+- 21 - D1 - [frontend/src/lib/api.ts:10-16](frontend/src/lib/api.ts#L10) - ApiClient n'envoie JAMAIS le token d'authentification aux endpoints REST (alors que GraphQL le fait via authLink) - Ajouter Authorization: Bearer ${token} dans les headers
+- 22 - D2 - [frontend/src/lib/api.ts:8-21](frontend/src/lib/api.ts#L8) - sendApiRequest ne retourne rien en cas d'erreur (undefined), les callers crashent en accédant aux propriétés - Throw l'erreur ou retourner une valeur par défaut appropriée
+- 23 - D3 - [frontend/src/pages/NewExpense/Component.tsx:18](frontend/src/pages/NewExpense/Component.tsx#L18) - z.coerce.number() transforme silencieusement les strings invalides: z.coerce.number() sur "abc" donne NaN qui peut passer la validation - Utiliser z.string().transform() avec validation stricte ou z.number() sans coerce
+- 24 - D4 - [frontend/src/pages/Transactions/loader.ts](frontend/src/pages/Transactions/loader.ts) + [frontend/src/pages/NewExpense/loader.ts](frontend/src/pages/NewExpense/loader.ts) + [frontend/src/pages/NewTransfer/loader.ts](frontend/src/pages/NewTransfer/loader.ts) - Loaders ne gèrent pas les erreurs: si API retourne 401 ou undefined, le loader crash sans try-catch ni redirection - Ajouter try-catch et rediriger vers /login si erreur d'auth
+- 25 - D5 - [frontend/src/contexts/AuthContext/Provider.tsx:49](frontend/src/contexts/AuthContext/Provider.tsx#L49) - useEffect avec dépendances incomplètes: logout manque dans le tableau des dépendances, risque de stale closure - Ajouter logout aux dépendances ou utiliser useCallback
+- 26 - D6 - [frontend/src/contexts/AuthContext/Provider.tsx:42](frontend/src/contexts/AuthContext/Provider.tsx#L42) - Type any pour jwtDecode(token), pas de typage ni validation du contenu du token - Créer une interface JWTPayload et typer correctement
+- 27 - D7 - [frontend/src/components/ExpenseTransactionItem.tsx:56](frontend/src/components/ExpenseTransactionItem.tsx#L56) - Parsing fragile d'ID: transaction.id.split('-').pop() assume format "expense-123", si le format change ça casse silencieusement - Utiliser une fonction de parsing robuste ou stocker l'ID numérique séparément
+- 28 - D8 - [frontend/src/pages/NewExpense/Component.tsx:66](frontend/src/pages/NewExpense/Component.tsx#L66) - Opérateur ! non-null assertion sur currentUser!.userId sans vérification, si le token expire pendant le remplissage du formulaire, crash - Vérifier l'existence de currentUser avant utilisation
+
+## Security & Privacy
+- 29 - E1 - [backend/src/api/user/userRepository.ts:5-10](backend/src/api/user/userRepository.ts#L5) - Le champ password du modèle User est inclus par défaut dans la réponse JSON de getAllUsers(), exposant les hash de passwords - Utiliser select pour exclure explicitement le champ password
+- 30 - E2 - [backend/src/api/user/augmentGraphqlSchema.ts:8](backend/src/api/user/augmentGraphqlSchema.ts#L8) + [frontend/src/pages/ExpenseDetails/Component.tsx:23](frontend/src/pages/ExpenseDetails/Component.tsx#L23) - Numéro de compte bancaire (bankAccount) exposé via l'API GraphQL et affiché dans le frontend, donnée PII hautement sensible - Retirer l'exposition de bankAccount ou implémenter un contrôle d'accès strict
+- 31 - E3 - [backend/src/api/expense/expenseRouter.ts](backend/src/api/expense/expenseRouter.ts) + [backend/src/api/transfer/transferRouter.ts](backend/src/api/transfer/transferRouter.ts) + [backend/src/api/transaction/transactionRouter.ts](backend/src/api/transaction/transactionRouter.ts) + [backend/src/api/user/userRouter.ts](backend/src/api/user/userRouter.ts) - AUCUNE authentification sur les endpoints REST (pas de middleware d'auth), n'importe qui peut lister/créer/voir toutes les ressources - Ajouter un middleware d'authentification comme dans GraphQL
+- 32 - E4 - [backend/src/api/expense/expenseController.ts:10-17](backend/src/api/expense/expenseController.ts#L10) + [backend/src/api/transfer/transferController.ts:10-16](backend/src/api/transfer/transferController.ts#L10) - Pas de vérification d'ownership sur les GET, même avec auth un utilisateur peut voir les expenses/transfers d'autres utilisateurs - Vérifier que l'utilisateur authentifié est impliqué (payeur ou participant) avant de retourner les données
+- 33 - E5 - [backend/src/api/auth/authRouter.ts](backend/src/api/auth/authRouter.ts) - Pas de rate limiting spécifique sur /register et /login, vulnérable aux attaques par brute force - Ajouter un rate limiter plus strict sur ces endpoints (ex: 5 tentatives/15min)
+- 34 - E6 - [backend/src/common/utils/envConfig.ts:13](backend/src/common/utils/envConfig.ts#L13) - CORS_ORIGIN avec default 'http://localhost:8080', en production sans variable set, CORS sera configuré pour localhost - Retirer le default et rendre la variable obligatoire, ou utiliser un default sécurisé
+- 35 - E7 - [backend/src/server.ts:42-43](backend/src/server.ts#L42) - Helmet CSP avec 'unsafe-inline' pour scripts et styles, le commentaire dit "only for dev" mais c'est appliqué en production - Rendre conditionnel avec env.isDevelopment ? ["'self'", "'unsafe-inline'"] : ["'self'"]
+
+## Extra (Bonus)
+- 36 - X1 - [backend/src/api/expense/expenseController.ts:20](backend/src/api/expense/expenseController.ts#L20) - description n'a pas de limite de longueur, un attaquant peut envoyer une string gigantesque (DoS) - Ajouter une validation max length (ex: 500 caractères)
+- 37 - X2 - [backend/src/api/expense/expenseController.ts:23](backend/src/api/expense/expenseController.ts#L23) - date accepte n'importe quelle date y compris dans le futur, pas de validation métier - Valider que la date n'est pas dans le futur
+- 38 - X3 - [backend/src/api/transaction/transactionModel.ts:25-26](backend/src/api/transaction/transactionModel.ts#L25) - payer: z.any() et participants: z.array(z.any()), pas de validation de type réelle - Créer un schema User approprié et l'utiliser
+- 39 - X4 - [backend/src/graphql/server.ts](backend/src/graphql/server.ts) - L'endpoint /graphql n'est pas protégé en production et pourrait être utilisé pour de l'introspection - Désactiver l'introspection GraphQL en production
+- 40 - X5 - [frontend/src/lib/api.ts:18](frontend/src/lib/api.ts#L18) - console.error pourrait logger des données sensibles en production - Utiliser un système de logging approprié qui filtre les données sensibles
+
+---
+
+## Statistiques
+- **Total d'issues identifiées**: 40
+- **Issues critiques (sécurité)**: 7
+- **Issues de haute priorité**: 15
+- **Issues de moyenne priorité**: 13
+- **Issues de basse priorité**: 5
+
+## Catégories les plus problématiques
+1. **Security & Privacy (E)**: 7 issues critiques - Manque d'authentification/autorisation, exposition de données sensibles
+2. **API & Backend (C)**: 8 issues - Validation absente, gestion d'erreurs incorrecte
+3. **Frontend & Client (D)**: 8 issues - Token non propagé, gestion d'erreurs manquante
+4. **Architecture & Design (A)**: 7 issues - Séparation des responsabilités, incohérences
+5. **Data & Persistence (B)**: 5 issues - Types inappropriés, manque de contraintes
