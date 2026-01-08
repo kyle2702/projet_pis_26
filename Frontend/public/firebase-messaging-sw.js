@@ -27,10 +27,17 @@ let firebaseConfig = null;
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'FIREBASE_CONFIG') {
     firebaseConfig = event.data.config;
+    console.log('[SW] Configuration Firebase reçue');
     try {
       if (typeof firebase !== 'undefined' && firebase.apps.length === 0) {
         firebase.initializeApp(firebaseConfig);
-        console.log('[SW] Firebase initialisé avec succès via postMessage');
+        console.log('[SW] Firebase initialisé avec succès');
+        // Réinitialiser messaging après l'init
+        if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
+          messaging = firebase.messaging();
+          console.log('[SW] Firebase Messaging initialisé');
+          setupMessagingListener();
+        }
       }
     } catch (e) {
       console.error('[SW] Erreur initialisation Firebase:', e);
@@ -39,6 +46,34 @@ self.addEventListener('message', (event) => {
 });
 
 let messaging = null;
+
+// Fonction pour configurer l'écoute des messages (appelée après init)
+function setupMessagingListener() {
+  if (!messaging) return;
+  
+  messaging.onBackgroundMessage((payload) => {
+    // Préférer les champs data.* que nous contrôlons depuis notre backend
+    const title = payload.data?.title || payload.notification?.title || 'Nouvelle notification';
+    const body = payload.data?.body || payload.notification?.body || '';
+    const clickUrl = payload.fcmOptions?.link || payload.data?.link || '/';
+    const nid = payload.data?.nid || payload.notification?.tag;
+    const tag = makeTag({ nid, title, body, url: clickUrl });
+    const contentKey = `${title}|${body}|${clickUrl}`.slice(0, 180);
+    if (!shouldShowOnce(tag, contentKey)) return;
+    const options = {
+      body,
+      icon: '/logo_pionniers.avif',
+      data: { url: clickUrl },
+      tag,
+      renotify: false,
+    };
+    self.registration.getNotifications({ includeTriggered: true }).then(list => {
+      list.filter(n => n.tag === tag).forEach(n => n.close());
+      self.registration.showNotification(title, options);
+    });
+  });
+}
+
 // Déduplication simple en mémoire (cycle de vie court du SW):
 const RECENT = new Set();
 const RECENT_CONTENT = new Set();
@@ -65,53 +100,32 @@ try {
   const isInitialized = hasFirebase && firebase.apps && firebase.apps.length > 0;
   if (hasFirebase && isSupported && isInitialized) {
     messaging = firebase.messaging();
+    console.log('[SW] Firebase Messaging pré-initialisé');
+    setupMessagingListener();
   } else {
-    // Ne pas casser le SW en dev local si Firebase n'est pas initialisé
-    // console.log('[SW] Firebase Messaging non initialisé (dev local or unsupported).');
+    console.log('[SW] Firebase Messaging en attente de configuration');
   }
 } catch (err) {
-  // console.warn('[SW] Erreur d\'initialisation de Messaging', err);
+  console.warn('[SW] Erreur pré-initialisation Messaging', err);
 }
 
-if (messaging) {
-  messaging.onBackgroundMessage((payload) => {
-  // Préférer les champs data.* que nous contrôlons depuis notre backend
-  const title = payload.data?.title || payload.notification?.title || 'Nouvelle notification';
-  const body = payload.data?.body || payload.notification?.body || '';
-    const clickUrl = payload.fcmOptions?.link || payload.data?.link || '/';
-  const nid = payload.data?.nid || payload.notification?.tag;
-  const tag = makeTag({ nid, title, body, url: clickUrl });
-  const contentKey = `${title}|${body}|${clickUrl}`.slice(0, 180);
-  if (!shouldShowOnce(tag, contentKey)) return;
-    const options = {
-      body,
-      icon: '/vite.svg',
-      data: { url: clickUrl },
-      tag,
-      renotify: false,
-    };
-    self.registration.getNotifications({ includeTriggered: true }).then(list => {
-      list.filter(n => n.tag === tag).forEach(n => n.close());
-      self.registration.showNotification(title, options);
-    });
-  });
-
-  self.addEventListener('notificationclick', function (event) {
-    event.notification.close();
-    const url = event.notification?.data?.url || '/';
-    event.waitUntil(
-      clients.matchAll({ type: 'window' }).then(windowClients => {
-        for (const client of windowClients) {
-          if ('focus' in client) {
-            client.navigate(url);
-            return client.focus();
-          }
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  const url = event.notification?.data?.url || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+      // Chercher une fenêtre déjà ouverte sur le même domaine
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(url);
+          return client.focus();
         }
-        if (clients.openWindow) return clients.openWindow(url);
-      })
-    );
-  });
-}
+      }
+      // Sinon ouvrir une nouvelle fenêtre
+      if (clients.openWindow) return clients.openWindow(url);
+    })
+  );
+});
 
 // Fallback Web Push standard (iOS/Safari, navigateurs sans FCM)
 // N'activer le fallback Web Push que si Firebase Messaging n'est pas actif
@@ -136,11 +150,35 @@ if (!messaging) self.addEventListener('push', (event) => {
     const clickUrl = data.link || (data.data && data.data.link) || '/';
   const nid = data.nid || (data.notification && data.notification.tag);
   const tag = makeTag({ nid, title, body, url: clickUrl });
+self.addEventListener('push', (event) => {
+  // Skip si Firebase Messaging est actif
+  if (messaging) return;
+  
+  try {
+    let data = {};
+    if (event.data) {
+      try {
+        data = event.data.json();
+      } catch (e) {
+        try {
+          const t = event.data.text();
+          data = JSON.parse(t);
+        } catch {
+          data = {};
+        }
+      }
+    }
+    // Même logique: préférer data.title/body
+    const title = (data && (data.title || (data.notification && data.notification.title))) || 'Notification';
+    const body = (data && (data.body || (data.notification && data.notification.body))) || '';
+    const clickUrl = data.link || (data.data && data.data.link) || '/';
+    const nid = data.nid || (data.notification && data.notification.tag);
+    const tag = makeTag({ nid, title, body, url: clickUrl });
     const contentKey = `${title}|${body}|${clickUrl}`.slice(0, 180);
     if (!shouldShowOnce(tag, contentKey)) return;
     const options = {
       body,
-      icon: '/vite.svg',
+      icon: '/logo_pionniers.avif',
       data: { url: clickUrl },
       tag,
       renotify: false,
@@ -152,7 +190,6 @@ if (!messaging) self.addEventListener('push', (event) => {
       })
     );
   } catch (e) {
+    console.error('[SW] Erreur traitement push:', e);
     // Données non JSON, afficher un titre par défaut
-    event.waitUntil(self.registration.showNotification('Notification', { body: '', icon: '/vite.svg' }));
-  }
-});
+    event.waitUntil(self.registration.showNotification('Notification', { body: '', icon: '/logo_pionniers.avif
