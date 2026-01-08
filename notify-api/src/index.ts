@@ -405,8 +405,8 @@ app.post('/notify/test', requireAuth, async (req: Request, res: Response) => {
     let sentFCM = false;
     let sentWebPush = false;
     
-    // Envoyer via FCM si le token existe et pas de Web Push
-    if (token && !sub) {
+    // Envoyer via FCM si le token existe
+    if (token) {
       try {
         await admin.messaging().send({
           token,
