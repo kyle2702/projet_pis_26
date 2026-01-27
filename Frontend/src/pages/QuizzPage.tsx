@@ -272,6 +272,7 @@ const styles: { [key: string]: CSSProperties } = {
     maxWidth: '400px',
     width: '100%',
     textAlign: 'center',
+    color: '#1f2937',
   },
   passwordInput: {
     padding: '1rem',
