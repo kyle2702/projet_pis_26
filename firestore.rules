@@ -81,6 +81,14 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // Équipes du quizz (protégé par mot de passe côté client)
+    match /quizz-teams/{teamId} {
+      // Lecture publique (pour afficher le classement)
+      allow read: if true;
+      // Création, modification et suppression libres (protection par mot de passe côté client)
+      allow create, update, delete: if true;
+    }
+
     // Fallback deny
     match /{document=**} {
       allow read, write: if false;

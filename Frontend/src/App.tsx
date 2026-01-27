@@ -9,6 +9,8 @@ const JobsPage = lazy(() => import('./pages/JobsPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
+const QuizzPage = lazy(() => import('./pages/QuizzPage'));
+const PointsPage = lazy(() => import('./pages/PointsPage'));
 
 import { AuthProvider } from './contexts/AuthContext';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -43,6 +45,15 @@ const router = createBrowserRouter([
         element: <AdminPage />,
       }
     ],
+  },
+  // Routes cachées pour le quizz (hors du Layout)
+  {
+    path: '/quizz',
+    element: <QuizzPage />,
+  },
+  {
+    path: '/points',
+    element: <PointsPage />,
   },
   { path: '*', element: <div style={{ padding: 24 }}>Page non trouvée</div> },
 ]);
