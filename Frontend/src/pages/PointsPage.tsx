@@ -133,16 +133,6 @@ export default function PointsPage() {
     }
   };
 
-  const handleUpdateScore = async (teamId: string, newScore: number) => {
-    try {
-      const db = getFirestoreDb();
-      const teamRef = doc(db, 'quizz-teams', teamId);
-      await updateDoc(teamRef, { score: newScore });
-    } catch (err) {
-      console.error('Erreur lors de la mise à jour du score:', err);
-      alert('Erreur lors de la mise à jour du score');
-    }
-  };
 
   const handleDeleteTeam = async (teamId: string) => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette équipe ?')) return;
