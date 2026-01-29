@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { collection, doc, getDoc, getDocs, Timestamp } from 'firebase/firestore';
 import { getFirestoreDb, getFirebaseAuth, getGoogleProvider } from '../firebase/config';
 import { reauthenticateWithCredential, EmailAuthProvider, updatePassword, fetchSignInMethodsForEmail, reauthenticateWithPopup } from 'firebase/auth';
@@ -225,15 +226,18 @@ const ProfilePage: React.FC = () => {
 
   const styles: { [k:string]: React.CSSProperties } = {
   container: { margin: '2rem auto', padding: 0, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' },
-  section: { background: '#fff', color:'#222', border: '1px solid #ddd', borderRadius: 10, padding: '1rem', margin: '0 auto 1.5rem', width: '100%', maxWidth: 320, alignSelf: 'center' },
-  table: { width:'100%', margin:'0 auto', borderCollapse:'collapse' },
-    th: { background:'#646cff', color:'#fff', padding:'0.6rem', textAlign:'left' },
-    td: { borderBottom:'1px solid #eee', padding:'0.6rem' },
-    label: { display:'block', marginBottom: 6, fontWeight: 600 },
-  input: { width: '100%', padding: '0.75rem', borderRadius: 4, border:'1px solid #ccc', fontSize: '1rem', boxSizing: 'border-box' },
+  section: { background: 'var(--color-surface)', color:'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', padding: '1.5rem', margin: '0 auto 1.5rem', width: '100%', maxWidth: 320, alignSelf: 'center', boxShadow: 'var(--shadow-md)' },
+  table: { width:'100%', margin:'0 auto', borderCollapse:'separate', borderSpacing: 0, borderRadius: 'var(--radius-lg)', overflow: 'hidden' },
+    th: { background:'var(--primary-gradient)', color:'#fff', padding:'0.75rem', textAlign:'left', fontWeight: 600, fontSize: '0.9rem' },
+    thFirst: { borderTopLeftRadius: 'var(--radius-lg)' },
+    thLast: { borderTopRightRadius: 'var(--radius-lg)' },
+    td: { borderBottom:'1px solid var(--color-border)', padding:'0.75rem', color: 'var(--color-text)', background: 'var(--color-surface)' },
+    tdLastRow: { borderBottom: 'none' },
+    label: { display:'block', marginBottom: 6, fontWeight: 600, color: 'var(--color-text)' },
+  input: { width: '100%', padding: '0.75rem', borderRadius: 'var(--radius-md)', border:'2px solid var(--color-border)', fontSize: '1rem', boxSizing: 'border-box', background: 'var(--color-surface)', color: 'var(--color-text)' },
   inputWrap: { position: 'relative', width: '100%', maxWidth: 320, margin: '0 auto' },
-    eyeBtn: { position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'transparent', border:'none', cursor:'pointer', color:'#555', padding:4, fontSize: '.9rem' },
-    btn: { background:'#646cff', color:'#fff', border:'none', borderRadius:8, padding:'0.6rem 1rem', cursor:'pointer' }
+    eyeBtn: { position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'transparent', border:'none', cursor:'pointer', color:'var(--color-text-light)', padding:4, fontSize: '.9rem' },
+    btn: { background:'var(--primary-gradient)', color:'#fff', border:'none', borderRadius:'var(--radius-lg)', padding:'0.75rem 1.25rem', cursor:'pointer', boxShadow: 'var(--shadow-md)', transition: 'all 0.3s ease' }
   };
   const passwordFieldStyles = { label: styles.label, inputWrap: styles.inputWrap, input: styles.input, eyeBtn: styles.eyeBtn };
 
@@ -349,13 +353,13 @@ const ProfilePage: React.FC = () => {
 
   return (
     <div style={styles.container} className="max-w-screen-sm w-full mx-auto">
-      <h1>Mon profil</h1>
+      <h1 style={{ color: 'var(--color-text)' }}>Mon profil</h1>
       {profileName && (
-        <div style={{ marginTop: 6, marginBottom: 8, fontSize: '1.25rem', color: 'inherit' }}>{profileName}</div>
+        <div style={{ marginTop: 6, marginBottom: 8, fontSize: '1.25rem', color: 'var(--color-text)' }}>{profileName}</div>
       )}
 
   <section style={styles.section} className="w-full">
-        <h2 style={{ marginTop:0 }}>Mes jobs terminés</h2>
+        <h2 style={{ marginTop:0, color: 'var(--color-text)' }}>Mes jobs terminés</h2>
         <div style={{ margin: '0.3rem 0 0.8rem' }}>Total: <strong>{totalHours}</strong> heures</div>
         {jobs.length === 0 ? (
           <div>Aucun job terminé.</div>
@@ -363,17 +367,17 @@ const ProfilePage: React.FC = () => {
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Titre</th>
+                <th style={{...styles.th, ...styles.thFirst}}>Titre</th>
                 <th style={styles.th}>Début</th>
-                <th style={styles.th}>Heures</th>
+                <th style={{...styles.th, ...styles.thLast}}>Heures</th>
               </tr>
             </thead>
             <tbody>
-              {jobs.map(j => (
+              {jobs.map((j, idx) => (
                 <tr key={j.id}>
-                  <td style={styles.td}>{j.title}</td>
-                  <td style={styles.td}>{j.begin}</td>
-                  <td style={styles.td}>{(j.minutes/60).toFixed(2)}</td>
+                  <td style={{...styles.td, ...(idx === jobs.length - 1 ? styles.tdLastRow : {}), borderBottomLeftRadius: idx === jobs.length - 1 ? 'var(--radius-lg)' : 0}}>{j.title}</td>
+                  <td style={{...styles.td, ...(idx === jobs.length - 1 ? styles.tdLastRow : {})}}>{j.begin}</td>
+                  <td style={{...styles.td, ...(idx === jobs.length - 1 ? styles.tdLastRow : {}), borderBottomRightRadius: idx === jobs.length - 1 ? 'var(--radius-lg)' : 0}}>{(j.minutes/60).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -383,7 +387,7 @@ const ProfilePage: React.FC = () => {
 
       {notifPermission !== 'unsupported' && (
   <section style={styles.section} className="w-full">
-          <h2 style={{ marginTop:0 }}>Notifications</h2>
+          <h2 style={{ marginTop:0, color: 'var(--color-text)' }}>Notifications</h2>
           {notifPermission === 'granted' ? (
             <div>Notifications déjà activées.</div>
           ) : (
@@ -393,7 +397,7 @@ const ProfilePage: React.FC = () => {
                 {notifBusy ? 'Activation…' : 'Activer les notifications'}
               </button>
               {notifPermission === 'denied' && (
-                <div style={{ color:'#b71c1c', maxWidth: 320 }}>Notifications refusées dans le navigateur. Allez dans Réglages &gt; Notifications &gt; Pionniers 26 et activez-les.</div>
+                <div style={{ color:'var(--color-danger)', maxWidth: 320, fontWeight: 500 }}>Notifications refusées dans le navigateur. Allez dans Réglages &gt; Notifications &gt; Pionniers 26 et activez-les.</div>
               )}
               {notifMsg && <div style={{ maxWidth: 320 }}>{notifMsg}</div>}
             </div>
@@ -401,19 +405,174 @@ const ProfilePage: React.FC = () => {
         </section>
       )}
 
+      <ThemeSection />
+
   <section style={styles.section} className="w-full">
-        <h2 style={{ marginTop:0 }}>Changer mon mot de passe</h2>
+        <h2 style={{ marginTop:0, color: 'var(--color-text)' }}>Changer mon mot de passe</h2>
         <form onSubmit={handleChangePassword} style={{ maxWidth: 320, margin:'0 auto' }}>
           <PasswordField label="Ancien mot de passe" value={oldPwd} onChange={setOldPwd} disabled={submitting} styles={passwordFieldStyles} />
           <PasswordField label="Nouveau mot de passe" value={newPwd} onChange={setNewPwd} disabled={submitting} marginTop={10} styles={passwordFieldStyles} />
           <PasswordField label="Confirmer le nouveau mot de passe" value={confirmPwd} onChange={setConfirmPwd} disabled={submitting} marginTop={10} styles={passwordFieldStyles} />
-          {pwdMsg && <div style={{ marginTop: 10, color: pwdSuccess ? 'green' : '#b71c1c', maxWidth: 320 }}>{pwdMsg}</div>}
+          {pwdMsg && <div style={{ marginTop: 10, color: pwdSuccess ? 'var(--color-success)' : 'var(--color-danger)', maxWidth: 320, fontWeight: 500 }}>{pwdMsg}</div>}
           <div style={{ marginTop: 14 }}>
             <button type="submit" style={styles.btn} disabled={submitting}>{hasPasswordProvider ? 'Mettre à jour' : 'Définir un mot de passe'}</button>
           </div>
         </form>
       </section>
     </div>
+  );
+};
+
+// Composant pour la section thème
+const ThemeSection: React.FC = () => {
+  const { themeMode, setThemeMode } = useTheme();
+  const [saving, setSaving] = useState(false);
+
+  const handleThemeChange = async (mode: 'light' | 'dark' | 'auto') => {
+    setSaving(true);
+    try {
+      await setThemeMode(mode);
+    } catch (error) {
+      console.error('Erreur lors du changement de thème:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const styles: { [k:string]: React.CSSProperties } = {
+    section: { background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', padding: '1.5rem', margin: '0 auto 1.5rem', width: '100%', maxWidth: 320, boxShadow: 'var(--shadow-md)' },
+    optionBtn: {
+      width: '100%',
+      padding: '1rem',
+      margin: '0.5rem 0',
+      border: '2px solid var(--color-border)',
+      borderRadius: 'var(--radius-lg)',
+      background: 'var(--color-surface)',
+      color: 'var(--color-text)',
+      cursor: 'pointer',
+      transition: 'all 0.3s ease',
+      fontSize: '1rem',
+      fontWeight: 500,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      boxShadow: 'var(--shadow-sm)'
+    },
+    activeBtn: {
+      borderColor: 'var(--color-primary)',
+      background: 'rgba(102, 126, 234, 0.1)',
+      fontWeight: 600
+    }
+  };
+
+  return (
+    <section style={styles.section} className="w-full">
+      <h2 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.25rem' }}>🎨 Thème</h2>
+      <div style={{ maxWidth: 320, margin: '0 auto' }}>
+        <button
+          style={{
+            ...styles.optionBtn,
+            ...(themeMode === 'light' ? styles.activeBtn : {})
+          }}
+          onClick={() => handleThemeChange('light')}
+          disabled={saving}
+          onMouseEnter={(e) => {
+            if (themeMode !== 'light') {
+              e.currentTarget.style.borderColor = 'var(--color-primary)';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (themeMode !== 'light') {
+              e.currentTarget.style.borderColor = 'var(--color-border)';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            Clair
+          </span>
+          {themeMode === 'light' && <span style={{ color: 'var(--color-primary)' }}>✓</span>}
+        </button>
+
+        <button
+          style={{
+            ...styles.optionBtn,
+            ...(themeMode === 'dark' ? styles.activeBtn : {})
+          }}
+          onClick={() => handleThemeChange('dark')}
+          disabled={saving}
+          onMouseEnter={(e) => {
+            if (themeMode !== 'dark') {
+              e.currentTarget.style.borderColor = 'var(--color-primary)';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (themeMode !== 'dark') {
+              e.currentTarget.style.borderColor = 'var(--color-border)';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+            Sombre
+          </span>
+          {themeMode === 'dark' && <span style={{ color: 'var(--color-primary)' }}>✓</span>}
+        </button>
+
+        <button
+          style={{
+            ...styles.optionBtn,
+            ...(themeMode === 'auto' ? styles.activeBtn : {})
+          }}
+          onClick={() => handleThemeChange('auto')}
+          disabled={saving}
+          onMouseEnter={(e) => {
+            if (themeMode !== 'auto') {
+              e.currentTarget.style.borderColor = 'var(--color-primary)';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (themeMode !== 'auto') {
+              e.currentTarget.style.borderColor = 'var(--color-border)';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            Auto (système)
+          </span>
+          {themeMode === 'auto' && <span style={{ color: 'var(--color-primary)' }}>✓</span>}
+        </button>
+        
+        {saving && (
+          <div style={{ marginTop: '0.5rem', textAlign: 'center', color: 'var(--color-text-light)', fontSize: '0.9rem' }}>
+            Sauvegarde...
+          </div>
+        )}
+      </div>
+    </section>
   );
 };
 

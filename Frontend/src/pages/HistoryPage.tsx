@@ -236,7 +236,7 @@ const HistoryPage: React.FC = () => {
   if (error) return <div style={{ padding: 24 }}>{error}</div>;
 
   return (
-    <div style={{ maxWidth: 400, margin: '2rem auto', padding: '1rem', position: 'relative' }} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
+    <div style={{ maxWidth: 340, margin: '2rem auto', padding: '1rem', position: 'relative' }} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
       <a
        
         onClick={(e) => { e.preventDefault(); navigate('/jobs'); }}
@@ -264,7 +264,7 @@ const HistoryPage: React.FC = () => {
       >
         <img src="/back-button.png" alt="Retour" style={{ width: 35, height: 35, display: 'block' }} />
       </a>
-      <h1 style={{ marginTop: 0, textAlign: 'center' }}>Historique des jobs</h1>
+      <h1>Historique des jobs</h1>
       <div
         style={{
           display: 'flex',
@@ -277,18 +277,28 @@ const HistoryPage: React.FC = () => {
         {jobs.map(job => (
           <div
             key={job.id}
+            className="animate-fade-in"
             style={{
-              border: '1px solid #bbb',
-              borderRadius: 10,
-              padding: '1.5rem',
-              background: '#fff',
-              boxShadow: '0 2px 8px rgba(100,108,255,0.07)',
-              color: '#222',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '1.75rem',
+              background: 'var(--color-surface)',
+              boxShadow: 'var(--shadow-md)',
+              color: 'var(--color-text)',
               position: 'relative',
-              transition: 'background .4s, border-color .4s',
+              transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
               width: '100%',
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'column',
+              minHeight: 220
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
+              e.currentTarget.style.transform = 'translateY(-4px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+              e.currentTarget.style.transform = 'translateY(0)';
             }}
           >
             {isAdmin && (
@@ -310,26 +320,79 @@ const HistoryPage: React.FC = () => {
                     setEditError(null);
                     setEditOpen(true);
                   }}
-                  style={{ background: '#fff', border: '1px solid #ddd', borderRadius: 8, padding: 6, cursor: 'pointer' }}
+                  style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: '0.5rem', cursor: 'pointer', transition: 'all 0.3s ease' }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--color-primary)'}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--color-border)'}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
                 </button>
               </div>
             )}
-            <h2 style={{ margin: 0, color: '#222', fontWeight: 700 }}>{job.title || 'Sans titre'}</h2>
-            <div style={{ color: '#646cff', fontWeight: 600, marginBottom: 8 }}>
-              {job['date-begin']} — {job['date-end']}
+            <h2 style={{ margin: '0 0 0.75rem 0', color: 'var(--color-text)', fontWeight: 700, fontSize: '1.5rem', textAlign: 'center' }}>{job.title || 'Sans titre'}</h2>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              marginBottom: '1rem',
+              padding: '0.75rem',
+              background: 'var(--color-accent-bg)',
+              borderRadius: 'var(--radius-lg)',
+              justifyContent: 'center'
+            }}>
+              <span style={{ fontSize: '1.25rem' }}>🕐</span>
+              <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--color-primary)' }}>
+                {job['date-begin']} — {job['date-end']}
+              </div>
             </div>
-            <div style={{ marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              <span style={{ fontWeight: 600, color: '#222' }}>Adresse :</span> {job.adress}
+            <div style={{ 
+              marginBottom: '0.75rem', 
+              fontSize: '0.95rem',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.5rem'
+            }}>
+              <span style={{ fontSize: '1.1rem' }}>📍</span>
+              <div><span style={{ fontWeight: 600, color: 'var(--color-text)' }}>Adresse :</span> <span style={{ color: 'var(--color-text-light)' }}>{job.adress}</span></div>
             </div>
-            <div style={{ marginBottom: 8, lineHeight: '1.4em', maxHeight: '4.2em', overflow: 'hidden' }}>
-              <span style={{ fontWeight: 600, color: '#222' }}>Description :</span> {job.description}
+            <div style={{ 
+              marginBottom: '0.75rem', 
+              fontSize: '0.95rem',
+              lineHeight: '1.5',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.5rem'
+            }}>
+              <span style={{ fontSize: '1.1rem' }}>📝</span>
+              <div><span style={{ fontWeight: 600, color: 'var(--color-text)' }}>Description :</span> <span style={{ color: 'var(--color-text-light)' }}>{job.description}</span></div>
             </div>
-            <div style={{ marginBottom: 8 }}><span style={{ fontWeight: 600, color: '#222' }}>Rémunération :</span> {job.remuneration}</div>
-            <div style={{ marginBottom: 8 }}><span style={{ fontWeight: 600, color: '#222' }}>Places :</span> {job.places}</div>
-            <div style={{ marginTop: 'auto', paddingTop: 8, borderTop: '1px solid #eee', color: '#222', fontWeight: 500, fontSize: '.95rem' }}>
-              <span style={{ color: '#646cff', fontWeight: 700 }}>Participants :</span> {participants[job.id]?.length ? participants[job.id].join(', ') : 'Aucun'}
+            <div style={{ 
+              marginBottom: '0.75rem', 
+              fontSize: '0.95rem',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.5rem'
+            }}>
+              <span style={{ fontSize: '1.1rem' }}>💰</span>
+              <div><span style={{ fontWeight: 600, color: 'var(--color-text)' }}>Rémunération :</span> <span style={{ color: 'var(--color-text-light)' }}>{job.remuneration}</span></div>
+            </div>
+            <div style={{ 
+              marginBottom: '1rem', 
+              fontSize: '0.95rem',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.5rem'
+            }}>
+              <span style={{ fontSize: '1.1rem' }}>👥</span>
+              <div><span style={{ fontWeight: 600, color: 'var(--color-text)' }}>Places :</span> <span style={{ color: 'var(--color-text-light)' }}>{job.places}</span></div>
+            </div>
+            <div style={{ 
+              marginTop: 'auto', 
+              paddingTop: '1rem', 
+              borderTop: '2px solid var(--color-border)', 
+              fontSize: '0.95rem',
+              fontWeight: 500
+            }}>
+              <span style={{ fontWeight: 700, color: 'var(--color-primary)' }}>✅ Participants :</span> <span style={{ color: 'var(--color-text-light)' }}>{participants[job.id]?.length ? participants[job.id].join(', ') : 'Aucun'}</span>
             </div>
           </div>
         ))}

@@ -13,6 +13,7 @@ const QuizzPage = lazy(() => import('./pages/QuizzPage'));
 const PointsPage = lazy(() => import('./pages/PointsPage'));
 
 import { AuthProvider } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { ErrorBoundary } from './ErrorBoundary';
 
 const router = createBrowserRouter([
@@ -72,11 +73,13 @@ function App() {
 
   return (
     <AuthProvider>
-      <ErrorBoundary>
-        <Suspense fallback={<div style={{ padding: 24 }}>Chargement…</div>}>
-          <RouterProvider router={router} />
-        </Suspense>
-      </ErrorBoundary>
+      <ThemeProvider>
+        <ErrorBoundary>
+          <Suspense fallback={<div style={{ padding: 24 }}>Chargement…</div>}>
+            <RouterProvider router={router} />
+          </Suspense>
+        </ErrorBoundary>
+      </ThemeProvider>
     </AuthProvider>
   );
 }

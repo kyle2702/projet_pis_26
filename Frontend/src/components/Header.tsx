@@ -38,13 +38,33 @@ const Header: React.FC = () => {
           className="menu-btn"
           aria-label="Ouvrir le menu"
           onClick={() => setMenuOpen((v) => !v)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginRight: 24 }}
+          style={{ 
+            background: 'rgba(255, 255, 255, 0.2)', 
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            backdropFilter: 'blur(10px)',
+            cursor: 'pointer', 
+            padding: 10,
+            marginRight: 24,
+            borderRadius: 'var(--radius-md)',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
         >
           <span style={{ display: 'inline-block', width: 32, height: 32 }}>
             <svg width="32" height="32" viewBox="0 0 32 32">
-              <rect y="6" width="32" height="4" rx="2" fill="#222" />
-              <rect y="14" width="32" height="4" rx="2" fill="#222" />
-              <rect y="22" width="32" height="4" rx="2" fill="#222" />
+              <rect y="6" width="32" height="4" rx="2" fill="white" />
+              <rect y="14" width="32" height="4" rx="2" fill="white" />
+              <rect y="22" width="32" height="4" rx="2" fill="white" />
             </svg>
           </span>
         </button>
