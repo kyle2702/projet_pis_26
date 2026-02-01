@@ -11,6 +11,7 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 const QuizzPage = lazy(() => import('./pages/QuizzPage'));
 const PointsPage = lazy(() => import('./pages/PointsPage'));
+const ValentinePage = lazy(() => import('./pages/ValentinePage'));
 
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -55,6 +56,11 @@ const router = createBrowserRouter([
   {
     path: '/points',
     element: <PointsPage />,
+  },
+  // Route spéciale Saint-Valentin (hors du Layout)
+  {
+    path: '/valentine',
+    element: <ValentinePage />,
   },
   { path: '*', element: <div style={{ padding: 24 }}>Page non trouvée</div> },
 ]);
