@@ -66,22 +66,30 @@ export const useAdmin = (userId?: string, token?: string | null, isLoading?: boo
   }, [isLoading]);
 
   /**
-   * Met à jour le statut d'une candidature
+   * Met à jour le statut d'une candidature (OPTIMISÉ avec UI optimiste)
    */
   const updateApplicationStatus = async (id: string, status: 'accepted' | 'refused') => {
+    // UI optimiste : retirer immédiatement de la liste
+    const applicationToUpdate = applications.find(app => app.id === id);
+    setApplications(apps => apps.filter(app => app.id !== id));
+
     try {
       await adminService.updateApplicationStatus(id, status, async (jobData) => {
-        await adminService.sendApplicationAcceptedNotification({
+        // Notification en arrière-plan (sans bloquer)
+        adminService.sendApplicationAcceptedNotification({
           jobId: jobData.jobId,
           jobTitle: jobData.jobTitle,
           applicantId: jobData.userId,
           applicantName: jobData.displayName
+        }).catch(err => {
+          console.warn('Notification failed (ignored):', err);
         });
       });
-      
-      // Retirer de la liste
-      setApplications(apps => apps.filter(app => app.id !== id));
     } catch {
+      // Rollback en cas d'erreur
+      if (applicationToUpdate) {
+        setApplications(apps => [...apps, applicationToUpdate]);
+      }
       throw new Error('Erreur lors de la mise à jour du statut.');
     }
   };

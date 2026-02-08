@@ -68,42 +68,61 @@ export const useJobs = (): UseJobsReturn => {
     })();
   }, [adminReady, isAdmin]);
 
-  // Souscription temps réel aux jobs et leurs dépendances
+  // Souscription temps réel aux jobs et leurs dépendances (OPTIMISÉ)
   useEffect(() => {
     if (!adminReady) return;
     setLoading(true);
 
     const unsubs: Array<() => void> = [];
+    const jobApplicationUnsubs = new Map<string, () => void>();
 
     // Écouter les jobs
     const jobsUnsub = jobsService.subscribeToJobs(
       async (jobsList) => {
         setJobs(jobsList);
+        
+        // Nettoyer les subscriptions des jobs supprimés
+        const currentJobIds = new Set(jobsList.map(j => j.id));
+        for (const [jobId, unsub] of jobApplicationUnsubs.entries()) {
+          if (!currentJobIds.has(jobId)) {
+            unsub();
+            jobApplicationUnsubs.delete(jobId);
+          }
+        }
 
-        // Pour chaque job, écouter les candidatures
+        // Pour chaque job, écouter les candidatures SEULEMENT si pas déjà subscrit
         for (const job of jobsList) {
-          const appsUnsub = jobsService.subscribeToApplications(
-            job.id,
-            (count, participants) => {
-              setApplications(prev => ({ ...prev, [job.id]: count }));
-              if (isAdmin) {
-                setJobParticipants(prev => ({ ...prev, [job.id]: participants }));
-              }
-            }
-          );
-          unsubs.push(appsUnsub);
-
-          // Si utilisateur connecté, écouter son statut de candidature
-          if (user) {
-            const userAppUnsub = jobsService.subscribeToUserApplication(
+          if (!jobApplicationUnsubs.has(job.id)) {
+            const appsUnsub = jobsService.subscribeToApplications(
               job.id,
-              user.uid,
-              (hasApplied, isPending) => {
-                setUserApplications(prev => ({ ...prev, [job.id]: hasApplied }));
-                setUserPendingApps(prev => ({ ...prev, [job.id]: isPending }));
+              (count, participants) => {
+                // Mise à jour par batch
+                setApplications(prev => ({ ...prev, [job.id]: count }));
+                if (isAdmin) {
+                  setJobParticipants(prev => ({ ...prev, [job.id]: participants }));
+                }
               }
             );
-            unsubs.push(userAppUnsub);
+            jobApplicationUnsubs.set(job.id, appsUnsub);
+
+            // Si utilisateur connecté, écouter son statut de candidature
+            if (user) {
+              const userAppUnsub = jobsService.subscribeToUserApplication(
+                job.id,
+                user.uid,
+                (hasApplied, isPending) => {
+                  // Mise à jour immédiate
+                  setUserApplications(prev => ({ ...prev, [job.id]: hasApplied }));
+                  setUserPendingApps(prev => ({ ...prev, [job.id]: isPending }));
+                }
+              );
+              // Combiner avec la subscription applications
+              const oldUnsub = jobApplicationUnsubs.get(job.id);
+              jobApplicationUnsubs.set(job.id, () => {
+                if (oldUnsub) oldUnsub();
+                userAppUnsub();
+              });
+            }
           }
         }
 
@@ -119,6 +138,7 @@ export const useJobs = (): UseJobsReturn => {
     unsubs.push(jobsUnsub);
 
     return () => {
+      // Nettoyer toutes les subscriptions
       unsubs.forEach(u => {
         try {
           u();
@@ -126,10 +146,20 @@ export const useJobs = (): UseJobsReturn => {
           console.warn('jobs unsubscribe failed', e);
         }
       });
+      
+      // Nettoyer les subscriptions des applications
+      jobApplicationUnsubs.forEach(unsub => {
+        try {
+          unsub();
+        } catch (e) {
+          console.warn('application unsubscribe failed', e);
+        }
+      });
+      jobApplicationUnsubs.clear();
     };
   }, [adminReady, isAdmin, user]);
 
-  // Créer un job
+  // Créer un job (OPTIMISÉ)
   const createJob = useCallback(async (formData: JobFormData) => {
     try {
       // Validation
@@ -146,8 +176,10 @@ export const useJobs = (): UseJobsReturn => {
 
       const jobId = await jobsService.createJob(formData);
       
-      // Notification (best effort)
-      await jobsService.notifyNewJob(jobId, formData);
+      // Notification en arrière-plan (best effort, sans bloquer l'UI)
+      jobsService.notifyNewJob(jobId, formData).catch(err => {
+        console.warn('Notification failed (ignored):', err);
+      });
     } catch (e) {
       throw e;
     }
@@ -179,33 +211,48 @@ export const useJobs = (): UseJobsReturn => {
     await jobsService.deleteJob(jobId);
   }, []);
 
-  // Postuler à un job
+  // Postuler à un job (OPTIMISÉ avec UI optimiste)
   const applyToJob = useCallback(async (jobId: string, jobTitle: string) => {
     if (!user) throw new Error('Utilisateur non connecté');
 
-    // Récupérer le displayName depuis Firestore si possible
-    let displayName = user.displayName;
+    // Mise à jour optimiste de l'UI
+    setUserPendingApps(prev => ({ ...prev, [jobId]: true }));
+
     try {
-      const userInfo = await jobsService.getUserInfo(user.uid);
-      if (userInfo?.displayName) {
-        displayName = userInfo.displayName;
+      // Récupérer le displayName depuis Firestore si possible
+      let displayName = user.displayName;
+      try {
+        const userInfo = await jobsService.getUserInfo(user.uid);
+        if (userInfo?.displayName) {
+          displayName = userInfo.displayName;
+        }
+      } catch {
+        // Ignoré intentionnellement
       }
-    } catch {
-      // Ignoré intentionnellement
+
+      if (!displayName) displayName = user.email || 'Utilisateur inconnu';
+
+      // Appel Firestore
+      const applyPromise = jobsService.applyToJob(
+        jobId,
+        jobTitle,
+        user.uid,
+        user.email || '',
+        displayName
+      );
+
+      // Notification en arrière-plan (sans attendre)
+      jobsService.notifyNewApplication(jobId, jobTitle, user.uid, displayName).catch(err => {
+        console.warn('Notification failed (ignored):', err);
+      });
+
+      // Attendre la confirmation Firestore
+      await applyPromise;
+    } catch (e) {
+      // Rollback en cas d'erreur
+      setUserPendingApps(prev => ({ ...prev, [jobId]: false }));
+      throw e;
     }
-
-    if (!displayName) displayName = user.email || 'Utilisateur inconnu';
-
-    await jobsService.applyToJob(
-      jobId,
-      jobTitle,
-      user.uid,
-      user.email || '',
-      displayName
-    );
-
-    // Notification (best effort)
-    await jobsService.notifyNewApplication(jobId, jobTitle, user.uid, displayName);
   }, [user]);
 
   // Retirer un participant

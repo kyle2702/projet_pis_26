@@ -169,12 +169,12 @@ const JobsPage: React.FC = () => {
     }
   };
 
-  // Handlers pour la postulation
+  // Handlers pour la postulation (OPTIMISÉ)
   const handleApplyToJob = async (jobId: string, jobTitle: string) => {
     setApplyLoading(jobId);
     try {
       await applyToJob(jobId, jobTitle);
-      alert('Votre demande a été envoyée et est en attente de validation.');
+      // Le feedback visuel est géré par l'UI optimiste via userPendingApps
     } catch (e) {
       alert('Erreur lors de la postulation.');
       console.error(e);

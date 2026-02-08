@@ -2,7 +2,7 @@
  * Composant pour afficher le tableau des candidatures en attente
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { JobApplication } from '../../types/admin.types';
 
 interface ApplicationsTableProps {
@@ -18,6 +18,17 @@ export const ApplicationsTable: React.FC<ApplicationsTableProps> = ({
   error,
   onUpdateStatus
 }) => {
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
+  const handleUpdateStatus = async (id: string, status: 'accepted' | 'refused') => {
+    setProcessingId(id);
+    try {
+      await onUpdateStatus(id, status);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   const styles: { [key: string]: React.CSSProperties } = {
     scrollBox: {
       maxHeight: '320px',
@@ -97,26 +108,37 @@ export const ApplicationsTable: React.FC<ApplicationsTableProps> = ({
             <tr><td colSpan={3} style={styles.td}>Aucune demande en attente</td></tr>
           )}
           {applications.map(app => (
-            <tr key={app.id}>
+            <tr key={app.id} style={{ 
+              opacity: processingId === app.id ? 0.5 : 1,
+              transition: 'opacity 0.3s ease'
+            }}>
               <td style={styles.td}>{app.jobTitle}</td>
               <td style={styles.td}>{app.displayName}</td>
               <td style={{ ...styles.td, ...styles.actionCell }}>
-                <button
-                  title="Accepter"
-                  aria-label="Accepter"
-                  style={{ ...styles.iconBtn, background: '#2e7d32' }}
-                  onClick={() => onUpdateStatus(app.id, 'accepted')}
-                >
-                  ✓
-                </button>
-                <button
-                  title="Refuser"
-                  aria-label="Refuser"
-                  style={{ ...styles.iconBtn, background: '#c62828' }}
-                  onClick={() => onUpdateStatus(app.id, 'refused')}
-                >
-                  ✕
-                </button>
+                {processingId === app.id ? (
+                  <span style={{ color: '#667eea', fontWeight: 600 }}>
+                    Traitement...
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      title="Accepter"
+                      aria-label="Accepter"
+                      style={{ ...styles.iconBtn, background: '#2e7d32' }}
+                      onClick={() => handleUpdateStatus(app.id, 'accepted')}
+                    >
+                      ✓
+                    </button>
+                    <button
+                      title="Refuser"
+                      aria-label="Refuser"
+                      style={{ ...styles.iconBtn, background: '#c62828' }}
+                      onClick={() => handleUpdateStatus(app.id, 'refused')}
+                    >
+                      ✕
+                    </button>
+                  </>
+                )}
               </td>
             </tr>
           ))}

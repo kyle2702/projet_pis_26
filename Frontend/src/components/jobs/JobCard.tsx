@@ -288,27 +288,47 @@ export const JobCard: React.FC<JobCardProps> = ({
               borderRadius: 'var(--radius-lg)',
               border: 'none',
               background: dejaPostule 
-                ? 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
+                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                : pending
+                ? 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)'
                 : placesRestantes === 0
                 ? '#e2e8f0'
                 : 'var(--primary-gradient)',
               color: placesRestantes === 0 ? '#94a3b8' : 'white',
               fontWeight: 600,
-              cursor: placesRestantes === 0 ? 'not-allowed' : 'pointer',
+              cursor: (placesRestantes === 0 || pending || applyLoading === job.id) ? 'not-allowed' : 'pointer',
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               boxShadow: placesRestantes === 0 ? 'none' : 'var(--shadow-md)',
-              fontSize: '0.95rem'
+              fontSize: '0.95rem',
+              opacity: (applyLoading === job.id) ? 0.7 : 1,
+              position: 'relative',
+              overflow: 'hidden'
             }}
           >
-            {applyLoading === job.id
-              ? '⏳ Chargement...'
-              : dejaPostule
-              ? '✓ Déjà postulé'
-              : pending
-              ? '⏳ En attente'
-              : placesRestantes === 0
-              ? 'Complet'
-              : 'Postuler'}
+            {applyLoading === job.id ? (
+              <>
+                <span style={{ 
+                  display: 'inline-block',
+                  animation: 'spin 1s linear infinite',
+                  marginRight: '0.5rem'
+                }}>⏳</span>
+                Envoi...
+              </>
+            ) : dejaPostule ? (
+              <>✓ Accepté</>
+            ) : pending ? (
+              <>
+                <span style={{ 
+                  display: 'inline-block',
+                  animation: 'pulse 2s ease-in-out infinite'
+                }}>⏳</span>
+                {' '}En attente
+              </>
+            ) : placesRestantes === 0 ? (
+              'Complet'
+            ) : (
+              'Postuler'
+            )}
           </button>
         )}
       </div>
