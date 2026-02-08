@@ -20,14 +20,6 @@ export const Toast: React.FC<ToastProps> = ({
   const [isVisible, setIsVisible] = useState(true);
   const [isLeaving, setIsLeaving] = useState(false);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      handleClose();
-    }, duration);
-
-    return () => clearTimeout(timer);
-  }, [duration]);
-
   const handleClose = () => {
     setIsLeaving(true);
     setTimeout(() => {
@@ -35,6 +27,15 @@ export const Toast: React.FC<ToastProps> = ({
       if (onClose) onClose();
     }, 300);
   };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleClose();
+    }, duration);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duration]);
 
   if (!isVisible) return null;
 

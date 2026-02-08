@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useJobs } from '../hooks/useJobs';
 import type { JobFormData } from '../types/job.types';
 import { JobCard } from '../components/jobs/JobCard';
+import { LazyJobCard } from '../components/jobs/LazyJobCard';
+import { JobCardSkeletonList } from '../components/jobs/JobCardSkeleton';
 import { JobForm } from '../components/jobs/JobForm';
 import { EditJobModal } from '../components/jobs/EditJobModal';
 import { ParticipantsModal } from '../components/jobs/ParticipantsModal';
@@ -317,7 +319,7 @@ const JobsPage: React.FC = () => {
       {fetchError && <div style={{ color: 'red', marginBottom: 16 }}>{fetchError}</div>}
 
       {loading ? (
-        <div>Chargement...</div>
+        <JobCardSkeletonList count={3} />
       ) : (
         <>
           {upcomingJobs.length === 0 && !isAdmin ? (
@@ -332,7 +334,7 @@ const JobsPage: React.FC = () => {
                 width: '100%'
               }}
             >
-              {upcomingJobs.map(job => {
+              {upcomingJobs.map((job, index) => {
                 const participants = isAdmin ? (jobParticipants[job.id] || []) : [];
                 const nbApplications = applications[job.id] || 0;
                 const placesRestantes = Math.max(0, job.places - nbApplications);
@@ -340,31 +342,32 @@ const JobsPage: React.FC = () => {
                 const pending = userPendingApps[job.id];
 
                 return (
-                  <JobCard
-                    key={job.id}
-                    job={job}
-                    isAdmin={isAdmin}
-                    isFocused={focusJobId === job.id}
-                    placesRestantes={placesRestantes}
-                    user={user}
-                    dejaPostule={dejaPostule}
-                    pending={pending}
-                    applyLoading={applyLoading}
-                    participants={participants}
-                    onEdit={() =>
-                      handleOpenEdit(job.id, {
-                        title: job.title,
-                        'date-begin': job.dateBeginInput || '',
-                        'date-end': job.dateEndInput || '',
-                        adress: job.adress,
-                        description: job.description,
-                        remuneration: job.remuneration,
-                        places: job.places
-                      })
-                    }
-                    onDelete={() => handleDeleteJob(job.id)}
-                    onApply={() => handleApplyToJob(job.id, job.title)}
-                  />
+                  <LazyJobCard key={job.id} index={index}>
+                    <JobCard
+                      job={job}
+                      isAdmin={isAdmin}
+                      isFocused={focusJobId === job.id}
+                      placesRestantes={placesRestantes}
+                      user={user}
+                      dejaPostule={dejaPostule}
+                      pending={pending}
+                      applyLoading={applyLoading}
+                      participants={participants}
+                      onEdit={() =>
+                        handleOpenEdit(job.id, {
+                          title: job.title,
+                          'date-begin': job.dateBeginInput || '',
+                          'date-end': job.dateEndInput || '',
+                          adress: job.adress,
+                          description: job.description,
+                          remuneration: job.remuneration,
+                          places: job.places
+                        })
+                      }
+                      onDelete={() => handleDeleteJob(job.id)}
+                      onApply={() => handleApplyToJob(job.id, job.title)}
+                    />
+                  </LazyJobCard>
                 );
               })}
             </div>

@@ -1,8 +1,9 @@
 /**
  * JobCard moderne avec design system mis à jour
+ * Optimisé pour mobile avec React.memo
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { Job } from '../../types/job.types';
 
 interface JobCardProps {
@@ -20,7 +21,7 @@ interface JobCardProps {
   onApply: () => void;
 }
 
-export const JobCard: React.FC<JobCardProps> = ({
+const JobCardComponent: React.FC<JobCardProps> = ({
   job,
   isAdmin,
   isFocused,
@@ -34,6 +35,11 @@ export const JobCard: React.FC<JobCardProps> = ({
   onDelete,
   onApply
 }) => {
+  // Détection mobile pour désactiver les animations hover
+  const isMobile = useMemo(() => {
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+  }, []);
+
   return (
     <div
       id={`job-${job.id}`}
@@ -53,18 +59,18 @@ export const JobCard: React.FC<JobCardProps> = ({
         flexDirection: 'column',
         overflow: 'hidden'
       }}
-      onMouseEnter={(e) => {
+      onMouseEnter={!isMobile ? (e) => {
         if (!isFocused) {
           e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
           e.currentTarget.style.transform = 'translateY(-4px)';
         }
-      }}
-      onMouseLeave={(e) => {
+      } : undefined}
+      onMouseLeave={!isMobile ? (e) => {
         if (!isFocused) {
           e.currentTarget.style.boxShadow = 'var(--shadow-md)';
           e.currentTarget.style.transform = 'translateY(0)';
         }
-      }}
+      } : undefined}
     >
       {/* Effet de gradient au survol */}
       <div
@@ -355,3 +361,18 @@ export const JobCard: React.FC<JobCardProps> = ({
     </div>
   );
 };
+
+// Mémoisation du composant pour éviter les re-renders inutiles
+export const JobCard = React.memo(JobCardComponent, (prevProps, nextProps) => {
+  // Re-render uniquement si ces props changent
+  return (
+    prevProps.job.id === nextProps.job.id &&
+    prevProps.isFocused === nextProps.isFocused &&
+    prevProps.placesRestantes === nextProps.placesRestantes &&
+    prevProps.dejaPostule === nextProps.dejaPostule &&
+    prevProps.pending === nextProps.pending &&
+    prevProps.applyLoading === nextProps.applyLoading &&
+    prevProps.participants.length === nextProps.participants.length &&
+    prevProps.isAdmin === nextProps.isAdmin
+  );
+});
