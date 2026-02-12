@@ -47,7 +47,7 @@ const JobCardComponent: React.FC<JobCardProps> = ({
       style={{
         border: isFocused ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
         borderRadius: 'var(--radius-xl)',
-        padding: '1.75rem',
+        padding: '0.5rem',
         background: 'var(--color-surface)',
         boxShadow: isFocused ? 'var(--shadow-xl)' : 'var(--shadow-md)',
         color: 'var(--color-text)',
