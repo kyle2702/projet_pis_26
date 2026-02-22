@@ -7,6 +7,7 @@ import type { EventClickArg } from '@fullcalendar/core';
 import { collection, addDoc, onSnapshot, doc, getDoc, Timestamp, deleteDoc, updateDoc } from 'firebase/firestore';
 import { getFirestoreDb } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 type FirestoreDateLike = Timestamp | { seconds: number } | string | number | Date | null | undefined;
 
@@ -34,6 +35,7 @@ type Weekend = {
 
 const CalendarPage: React.FC = () => {
   const { user } = useAuth();
+  const { resolvedTheme } = useTheme();
   const [isAdmin, setIsAdmin] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -64,6 +66,7 @@ const CalendarPage: React.FC = () => {
   const [editMeetingForm, setEditMeetingForm] = useState<{ title: string; date: string; start: string; end: string }>({ title: '', date: '', start: '', end: '' });
   const [editWeekendOpen, setEditWeekendOpen] = useState(false);
   const [editWeekendForm, setEditWeekendForm] = useState<{ title: string; location: string; startDate: string; startTime: string; endDate: string; endTime: string }>({ title: 'Week-end', location: '', startDate: '', startTime: '00:00', endDate: '', endTime: '23:59' });
+  const [dateSelectionModal, setDateSelectionModal] = useState<{ show: boolean; date: Date | null }>({ show: false, date: null });
 
   useEffect(() => {
     let cancelled = false;
@@ -199,8 +202,8 @@ const CalendarPage: React.FC = () => {
     return [...jobEvents, ...meetingEvents, ...weekendEvents];
   }, [jobs, meetings, weekends]);
 
-  const openAddModal = () => {
-    const now = new Date();
+  const openAddModal = (selectedDate?: Date) => {
+    const now = selectedDate || new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
@@ -208,8 +211,8 @@ const CalendarPage: React.FC = () => {
     setAddOpen(true);
   };
 
-  const openAddWeekendModal = () => {
-    const now = new Date();
+  const openAddWeekendModal = (selectedDate?: Date) => {
+    const now = selectedDate || new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
@@ -385,7 +388,7 @@ const CalendarPage: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <button
             type="button"
-            onClick={openAddModal}
+            onClick={() => openAddModal()}
             style={{
               background: '#646cff', color: '#fff', border: 'none', borderRadius: 8,
               padding: '0.5rem 0.9rem', cursor: 'pointer', fontWeight: 600
@@ -395,7 +398,7 @@ const CalendarPage: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={openAddWeekendModal}
+            onClick={() => openAddWeekendModal()}
             style={{
               background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8,
               padding: '0.5rem 0.9rem', cursor: 'pointer', fontWeight: 600
@@ -409,7 +412,11 @@ const CalendarPage: React.FC = () => {
         <Suspense fallback={<div>Chargement du calendrier…</div>}>
           <CalendarView
             events={events as EventInput[]}
-            selectable={false}
+            selectable={isAdmin}
+            onSelect={(selectInfo) => {
+              if (!isAdmin) return;
+              setDateSelectionModal({ show: true, date: selectInfo.start });
+            }}
             onEventClick={(arg: EventClickArg) => {
               const kind = (arg.event.extendedProps?.kind as 'job' | 'meeting' | 'weekend') || (arg.event.id.startsWith('job_') ? 'job' : arg.event.id.startsWith('weekend_') ? 'weekend' : 'meeting');
               const preciseStart = (arg.event.extendedProps?.preciseStart as Date | undefined) ?? arg.event.start ?? null;
@@ -427,65 +434,214 @@ const CalendarPage: React.FC = () => {
         </Suspense>
       </div>
 
+      {dateSelectionModal.show && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setDateSelectionModal({ show: false, date: null })}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ 
+              background: 'var(--color-surface)', 
+              color: 'var(--color-text)', 
+              borderRadius: 12, 
+              padding: '1.5rem 1.75rem', 
+              width: 'min(420px, 92vw)', 
+              boxShadow: 'var(--shadow-xl)',
+              border: '1px solid var(--color-border)'
+            }}
+          >
+            <h2 style={{ marginTop: 0, marginBottom: '1.25rem', fontSize: '1.25rem', textAlign: 'center', color: 'var(--color-text)' }}>Que souhaitez-vous créer ?</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <button
+                onClick={() => {
+                  setDateSelectionModal({ show: false, date: null });
+                  openAddModal(dateSelectionModal.date || undefined);
+                }}
+                style={{
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '0.75rem 1.25rem',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '1rem',
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                  boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.3)';
+                }}
+              >
+                📅 Réunion
+              </button>
+              <button
+                onClick={() => {
+                  setDateSelectionModal({ show: false, date: null });
+                  openAddWeekendModal(dateSelectionModal.date || undefined);
+                }}
+                style={{
+                  background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '0.75rem 1.25rem',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '1rem',
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                  boxShadow: '0 2px 8px rgba(14, 165, 233, 0.3)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(14, 165, 233, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(14, 165, 233, 0.3)';
+                }}
+              >
+                🏕️ Week-end
+              </button>
+              <button
+                onClick={() => setDateSelectionModal({ show: false, date: null })}
+                style={{
+                  background: resolvedTheme === 'dark' ? 'rgba(255,255,255,0.1)' : '#f3f4f6',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 8,
+                  padding: '0.65rem 1.25rem',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: '0.95rem',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = resolvedTheme === 'dark' ? 'rgba(255,255,255,0.15)' : '#e5e7eb';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = resolvedTheme === 'dark' ? 'rgba(255,255,255,0.1)' : '#f3f4f6';
+                }}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {addOpen && (
         <div
           role="dialog"
           aria-modal="true"
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={() => setAddOpen(false)}
         >
           <form
             onClick={(e) => e.stopPropagation()}
             onSubmit={submitAddMeeting}
-            style={{ background: '#fff', color: '#222', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(520px, 92vw)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}
+            style={{ 
+              background: 'var(--color-surface)', 
+              color: 'var(--color-text)', 
+              borderRadius: 12, 
+              padding: '1rem 1.25rem', 
+              width: 'min(520px, 92vw)', 
+              boxShadow: 'var(--shadow-xl)',
+              border: '1px solid var(--color-border)'
+            }}
           >
-            <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: '1.15rem' }}>Nouvelle réunion</h2>
+            <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: '1.15rem', color: 'var(--color-text)' }}>Nouvelle réunion</h2>
             <div style={{ display: 'grid', gap: 10 }}>
               <label style={{ display: 'grid', gap: 6 }}>
-                <span>Titre</span>
+                <span style={{ color: 'var(--color-text)' }}>Titre</span>
                 <input
                   type="text"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   required
-                  style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }}
+                  style={{ 
+                    padding: '0.5rem 0.6rem', 
+                    borderRadius: 8, 
+                    border: '1px solid var(--color-border)',
+                    background: 'var(--color-surface)',
+                    color: 'var(--color-text)'
+                  }}
                 />
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <label style={{ display: 'grid', gap: 6 }}>
-                  <span>Date</span>
+                  <span style={{ color: 'var(--color-text)' }}>Date</span>
                   <input
                     type="date"
                     value={form.date}
                     onChange={(e) => setForm({ ...form, date: e.target.value })}
                     required
-                    style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }}
+                    style={{ 
+                      padding: '0.5rem 0.6rem', 
+                      borderRadius: 8, 
+                      border: '1px solid var(--color-border)',
+                      background: 'var(--color-surface)',
+                      color: 'var(--color-text)'
+                    }}
                   />
                 </label>
                 <label style={{ display: 'grid', gap: 6 }}>
-                  <span>Début</span>
+                  <span style={{ color: 'var(--color-text)' }}>Début</span>
                   <input
                     type="time"
                     value={form.start}
                     onChange={(e) => setForm({ ...form, start: e.target.value })}
                     required
-                    style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }}
+                    style={{ 
+                      padding: '0.5rem 0.6rem', 
+                      borderRadius: 8, 
+                      border: '1px solid var(--color-border)',
+                      background: 'var(--color-surface)',
+                      color: 'var(--color-text)'
+                    }}
                   />
                 </label>
                 <label style={{ display: 'grid', gap: 6 }}>
-                  <span>Fin</span>
+                  <span style={{ color: 'var(--color-text)' }}>Fin</span>
                   <input
                     type="time"
                     value={form.end}
                     onChange={(e) => setForm({ ...form, end: e.target.value })}
                     required
-                    style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }}
+                    style={{ 
+                      padding: '0.5rem 0.6rem', 
+                      borderRadius: 8, 
+                      border: '1px solid var(--color-border)',
+                      background: 'var(--color-surface)',
+                      color: 'var(--color-text)'
+                    }}
                   />
                 </label>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
-              <button type="button" onClick={() => setAddOpen(false)} style={{ background: '#eee', color: '#222', border: '1px solid #ddd', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer' }}>Annuler</button>
+              <button 
+                type="button" 
+                onClick={() => setAddOpen(false)} 
+                style={{ 
+                  background: resolvedTheme === 'dark' ? 'rgba(255,255,255,0.1)' : '#eee', 
+                  color: 'var(--color-text)', 
+                  border: '1px solid var(--color-border)', 
+                  borderRadius: 8, 
+                  padding: '0.45rem 0.9rem', 
+                  cursor: 'pointer' 
+                }}
+              >
+                Annuler
+              </button>
               <button type="submit" style={{ background: '#646cff', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer', fontWeight: 600 }}>Créer</button>
             </div>
           </form>
@@ -497,25 +653,33 @@ const CalendarPage: React.FC = () => {
           role="dialog"
           aria-modal="true"
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9999,
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999,
             display: 'flex', alignItems: 'center', justifyContent: 'center'
           }}
           onClick={() => setSelected(null)}
         >
           <div
-            style={{ background: '#fff', color: '#222', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(520px, 92vw)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}
+            style={{ 
+              background: 'var(--color-surface)', 
+              color: 'var(--color-text)', 
+              borderRadius: 12, 
+              padding: '1rem 1.25rem', 
+              width: 'min(520px, 92vw)', 
+              boxShadow: 'var(--shadow-xl)',
+              border: '1px solid var(--color-border)'
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <h2 style={{ margin: 0, fontSize: '1.25rem' }}>{selected.title}</h2>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--color-text)' }}>{selected.title}</h2>
               <button
                 onClick={() => setSelected(null)}
                 aria-label="Fermer"
                 title="Fermer"
                 style={{
-                  background: '#f0f0f0',
-                  color: '#222',
-                  border: '1px solid #ddd',
+                  background: resolvedTheme === 'dark' ? 'rgba(255,255,255,0.1)' : '#f0f0f0',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border)',
                   borderRadius: 8,
                   padding: '0.25rem 0.55rem',
                   fontSize: 16,
@@ -526,7 +690,7 @@ const CalendarPage: React.FC = () => {
                 ✕
               </button>
             </div>
-            <div style={{ fontSize: '.95rem', lineHeight: 1.5 }}>
+            <div style={{ fontSize: '.95rem', lineHeight: 1.5, color: 'var(--color-text)' }}>
               <div><strong>Type:</strong> {selected.type === 'job' ? 'Job' : selected.type === 'meeting' ? 'Réunion' : 'Week-end'}</div>
               {selected.location ? (
                 <div><strong>Lieu:</strong> {selected.location}</div>
@@ -579,61 +743,142 @@ const CalendarPage: React.FC = () => {
         <div
           role="dialog"
           aria-modal="true"
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={() => setAddWeekendOpen(false)}
         >
           <form
             onClick={(e) => e.stopPropagation()}
             onSubmit={submitAddWeekend}
-            style={{ background: '#fff', color: '#222', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(520px, 92vw)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}
+            style={{ 
+              background: 'var(--color-surface)', 
+              color: 'var(--color-text)', 
+              borderRadius: 12, 
+              padding: '1rem 1.25rem', 
+              width: 'min(520px, 92vw)', 
+              boxShadow: 'var(--shadow-xl)',
+              border: '1px solid var(--color-border)'
+            }}
           >
-            <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: '1.15rem' }}>Nouveau week-end</h2>
+            <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: '1.15rem', color: 'var(--color-text)' }}>Nouveau week-end</h2>
             <div style={{ display: 'grid', gap: 10 }}>
               <label style={{ display: 'grid', gap: 6 }}>
-                <span>Titre</span>
+                <span style={{ color: 'var(--color-text)' }}>Titre</span>
                 <input
                   type="text"
                   value={weekendForm.title}
                   onChange={(e) => setWeekendForm({ ...weekendForm, title: e.target.value })}
-                  style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }}
+                  style={{ 
+                    padding: '0.5rem 0.6rem', 
+                    borderRadius: 8, 
+                    border: '1px solid var(--color-border)',
+                    background: 'var(--color-surface)',
+                    color: 'var(--color-text)'
+                  }}
                   placeholder="Week-end"
                 />
               </label>
               <label style={{ display: 'grid', gap: 6 }}>
-                <span>Lieu</span>
+                <span style={{ color: 'var(--color-text)' }}>Lieu</span>
                 <input
                   type="text"
                   value={weekendForm.location}
                   onChange={(e) => setWeekendForm({ ...weekendForm, location: e.target.value })}
-                  style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }}
+                  style={{ 
+                    padding: '0.5rem 0.6rem', 
+                    borderRadius: 8, 
+                    border: '1px solid var(--color-border)',
+                    background: 'var(--color-surface)',
+                    color: 'var(--color-text)'
+                  }}
                   placeholder="Ex: Local, Adresse..."
                 />
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div style={{ display: 'grid', gap: 6 }}>
                   <label style={{ display: 'grid', gap: 6 }}>
-                    <span>Début — Date</span>
-                    <input type="date" value={weekendForm.startDate} onChange={(e) => setWeekendForm({ ...weekendForm, startDate: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                    <span style={{ color: 'var(--color-text)' }}>Début — Date</span>
+                    <input 
+                      type="date" 
+                      value={weekendForm.startDate} 
+                      onChange={(e) => setWeekendForm({ ...weekendForm, startDate: e.target.value })} 
+                      required 
+                      style={{ 
+                        padding: '0.5rem 0.6rem', 
+                        borderRadius: 8, 
+                        border: '1px solid var(--color-border)',
+                        background: 'var(--color-surface)',
+                        color: 'var(--color-text)'
+                      }} 
+                    />
                   </label>
                   <label style={{ display: 'grid', gap: 6 }}>
-                    <span>Début — Heure</span>
-                    <input type="time" value={weekendForm.startTime} onChange={(e) => setWeekendForm({ ...weekendForm, startTime: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                    <span style={{ color: 'var(--color-text)' }}>Début — Heure</span>
+                    <input 
+                      type="time" 
+                      value={weekendForm.startTime} 
+                      onChange={(e) => setWeekendForm({ ...weekendForm, startTime: e.target.value })} 
+                      required 
+                      style={{ 
+                        padding: '0.5rem 0.6rem', 
+                        borderRadius: 8, 
+                        border: '1px solid var(--color-border)',
+                        background: 'var(--color-surface)',
+                        color: 'var(--color-text)'
+                      }} 
+                    />
                   </label>
                 </div>
                 <div style={{ display: 'grid', gap: 6 }}>
                   <label style={{ display: 'grid', gap: 6 }}>
-                    <span>Fin — Date</span>
-                    <input type="date" value={weekendForm.endDate} onChange={(e) => setWeekendForm({ ...weekendForm, endDate: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                    <span style={{ color: 'var(--color-text)' }}>Fin — Date</span>
+                    <input 
+                      type="date" 
+                      value={weekendForm.endDate} 
+                      onChange={(e) => setWeekendForm({ ...weekendForm, endDate: e.target.value })} 
+                      required 
+                      style={{ 
+                        padding: '0.5rem 0.6rem', 
+                        borderRadius: 8, 
+                        border: '1px solid var(--color-border)',
+                        background: 'var(--color-surface)',
+                        color: 'var(--color-text)'
+                      }} 
+                    />
                   </label>
                   <label style={{ display: 'grid', gap: 6 }}>
-                    <span>Fin — Heure</span>
-                    <input type="time" value={weekendForm.endTime} onChange={(e) => setWeekendForm({ ...weekendForm, endTime: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                    <span style={{ color: 'var(--color-text)' }}>Fin — Heure</span>
+                    <input 
+                      type="time" 
+                      value={weekendForm.endTime} 
+                      onChange={(e) => setWeekendForm({ ...weekendForm, endTime: e.target.value })} 
+                      required 
+                      style={{ 
+                        padding: '0.5rem 0.6rem', 
+                        borderRadius: 8, 
+                        border: '1px solid var(--color-border)',
+                        background: 'var(--color-surface)',
+                        color: 'var(--color-text)'
+                      }} 
+                    />
                   </label>
                 </div>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
-              <button type="button" onClick={() => setAddWeekendOpen(false)} style={{ background: '#eee', color: '#222', border: '1px solid #ddd', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer' }}>Annuler</button>
+              <button 
+                type="button" 
+                onClick={() => setAddWeekendOpen(false)} 
+                style={{ 
+                  background: resolvedTheme === 'dark' ? 'rgba(255,255,255,0.1)' : '#eee', 
+                  color: 'var(--color-text)', 
+                  border: '1px solid var(--color-border)', 
+                  borderRadius: 8, 
+                  padding: '0.45rem 0.9rem', 
+                  cursor: 'pointer' 
+                }}
+              >
+                Annuler
+              </button>
               <button type="submit" style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer', fontWeight: 600 }}>Créer</button>
             </div>
           </form>
@@ -641,31 +886,31 @@ const CalendarPage: React.FC = () => {
       )}
 
       {editMeetingOpen && selected && selected.type === 'meeting' && (
-        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setEditMeetingOpen(false)}>
-          <form onClick={(e) => e.stopPropagation()} onSubmit={submitEditMeeting} style={{ background: '#fff', color: '#222', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(520px, 92vw)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}>
-            <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: '1.15rem' }}>Modifier la réunion</h2>
+        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setEditMeetingOpen(false)}>
+          <form onClick={(e) => e.stopPropagation()} onSubmit={submitEditMeeting} style={{ background: 'var(--color-surface)', color: 'var(--color-text)', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(520px, 92vw)', boxShadow: 'var(--shadow-xl)', border: '1px solid var(--color-border)' }}>
+            <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: '1.15rem', color: 'var(--color-text)' }}>Modifier la réunion</h2>
             <div style={{ display: 'grid', gap: 10 }}>
               <label style={{ display: 'grid', gap: 6 }}>
-                <span>Titre</span>
-                <input type="text" value={editMeetingForm.title} onChange={(e) => setEditMeetingForm({ ...editMeetingForm, title: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                <span style={{ color: 'var(--color-text)' }}>Titre</span>
+                <input type="text" value={editMeetingForm.title} onChange={(e) => setEditMeetingForm({ ...editMeetingForm, title: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }} />
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <label style={{ display: 'grid', gap: 6 }}>
-                  <span>Date</span>
-                  <input type="date" value={editMeetingForm.date} onChange={(e) => setEditMeetingForm({ ...editMeetingForm, date: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                  <span style={{ color: 'var(--color-text)' }}>Date</span>
+                  <input type="date" value={editMeetingForm.date} onChange={(e) => setEditMeetingForm({ ...editMeetingForm, date: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }} />
                 </label>
                 <label style={{ display: 'grid', gap: 6 }}>
-                  <span>Début</span>
-                  <input type="time" value={editMeetingForm.start} onChange={(e) => setEditMeetingForm({ ...editMeetingForm, start: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                  <span style={{ color: 'var(--color-text)' }}>Début</span>
+                  <input type="time" value={editMeetingForm.start} onChange={(e) => setEditMeetingForm({ ...editMeetingForm, start: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }} />
                 </label>
                 <label style={{ display: 'grid', gap: 6 }}>
-                  <span>Fin</span>
-                  <input type="time" value={editMeetingForm.end} onChange={(e) => setEditMeetingForm({ ...editMeetingForm, end: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                  <span style={{ color: 'var(--color-text)' }}>Fin</span>
+                  <input type="time" value={editMeetingForm.end} onChange={(e) => setEditMeetingForm({ ...editMeetingForm, end: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }} />
                 </label>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
-              <button type="button" onClick={() => setEditMeetingOpen(false)} style={{ background: '#eee', color: '#222', border: '1px solid #ddd', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer' }}>Annuler</button>
+              <button type="button" onClick={() => setEditMeetingOpen(false)} style={{ background: resolvedTheme === 'dark' ? 'rgba(255,255,255,0.1)' : '#eee', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer' }}>Annuler</button>
               <button type="submit" style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer', fontWeight: 600 }}>Enregistrer</button>
             </div>
           </form>
@@ -673,43 +918,43 @@ const CalendarPage: React.FC = () => {
       )}
 
       {editWeekendOpen && selected && selected.type === 'weekend' && (
-        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setEditWeekendOpen(false)}>
-          <form onClick={(e) => e.stopPropagation()} onSubmit={submitEditWeekend} style={{ background: '#fff', color: '#222', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(520px, 92vw)', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}>
-            <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: '1.15rem' }}>Modifier le week-end</h2>
+        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setEditWeekendOpen(false)}>
+          <form onClick={(e) => e.stopPropagation()} onSubmit={submitEditWeekend} style={{ background: 'var(--color-surface)', color: 'var(--color-text)', borderRadius: 12, padding: '1rem 1.25rem', width: 'min(520px, 92vw)', boxShadow: 'var(--shadow-xl)', border: '1px solid var(--color-border)' }}>
+            <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: '1.15rem', color: 'var(--color-text)' }}>Modifier le week-end</h2>
             <div style={{ display: 'grid', gap: 10 }}>
               <label style={{ display: 'grid', gap: 6 }}>
-                <span>Titre</span>
-                <input type="text" value={editWeekendForm.title} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, title: e.target.value })} style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} placeholder="Week-end" />
+                <span style={{ color: 'var(--color-text)' }}>Titre</span>
+                <input type="text" value={editWeekendForm.title} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, title: e.target.value })} style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }} placeholder="Week-end" />
               </label>
               <label style={{ display: 'grid', gap: 6 }}>
-                <span>Lieu</span>
-                <input type="text" value={editWeekendForm.location} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, location: e.target.value })} style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} placeholder="Ex: Local, Adresse..." />
+                <span style={{ color: 'var(--color-text)' }}>Lieu</span>
+                <input type="text" value={editWeekendForm.location} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, location: e.target.value })} style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }} placeholder="Ex: Local, Adresse..." />
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div style={{ display: 'grid', gap: 6 }}>
                   <label style={{ display: 'grid', gap: 6 }}>
-                    <span>Début — Date</span>
-                    <input type="date" value={editWeekendForm.startDate} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, startDate: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                    <span style={{ color: 'var(--color-text)' }}>Début — Date</span>
+                    <input type="date" value={editWeekendForm.startDate} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, startDate: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }} />
                   </label>
                   <label style={{ display: 'grid', gap: 6 }}>
-                    <span>Début — Heure</span>
-                    <input type="time" value={editWeekendForm.startTime} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, startTime: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                    <span style={{ color: 'var(--color-text)' }}>Début — Heure</span>
+                    <input type="time" value={editWeekendForm.startTime} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, startTime: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }} />
                   </label>
                 </div>
                 <div style={{ display: 'grid', gap: 6 }}>
                   <label style={{ display: 'grid', gap: 6 }}>
-                    <span>Fin — Date</span>
-                    <input type="date" value={editWeekendForm.endDate} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, endDate: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                    <span style={{ color: 'var(--color-text)' }}>Fin — Date</span>
+                    <input type="date" value={editWeekendForm.endDate} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, endDate: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }} />
                   </label>
                   <label style={{ display: 'grid', gap: 6 }}>
-                    <span>Fin — Heure</span>
-                    <input type="time" value={editWeekendForm.endTime} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, endTime: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
+                    <span style={{ color: 'var(--color-text)' }}>Fin — Heure</span>
+                    <input type="time" value={editWeekendForm.endTime} onChange={(e) => setEditWeekendForm({ ...editWeekendForm, endTime: e.target.value })} required style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }} />
                   </label>
                 </div>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
-              <button type="button" onClick={() => setEditWeekendOpen(false)} style={{ background: '#eee', color: '#222', border: '1px solid #ddd', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer' }}>Annuler</button>
+              <button type="button" onClick={() => setEditWeekendOpen(false)} style={{ background: resolvedTheme === 'dark' ? 'rgba(255,255,255,0.1)' : '#eee', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer' }}>Annuler</button>
               <button type="submit" style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 0.9rem', cursor: 'pointer', fontWeight: 600 }}>Enregistrer</button>
             </div>
           </form>
