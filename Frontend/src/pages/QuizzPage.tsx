@@ -167,6 +167,11 @@ const styles: { [key: string]: CSSProperties } = {
     color: 'white',
     fontSize: '3rem',
     margin: 0,
+    fontWeight: 'bold',
+    opacity: 1,
+    background: 'none',
+    WebkitTextFillColor: 'white',
+    backgroundClip: 'unset',
     textShadow: '2px 2px 4px rgba(0, 0, 0, 0.3)',
   },
   liveIndicator: {
