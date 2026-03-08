@@ -11,19 +11,8 @@ interface Team {
 
 export default function QuizzPage() {
   const [teams, setTeams] = useState<Team[]>([]);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
 
   useEffect(() => {
-    // Vérifier si déjà authentifié dans la session
-    const authenticated = sessionStorage.getItem('quizz-auth') === 'true';
-    setIsAuthenticated(authenticated);
-  }, []);
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
     const db = getFirestoreDb();
     const teamsCollection = collection(db, 'quizz-teams');
     const q = query(teamsCollection, orderBy('score', 'desc'));
@@ -48,43 +37,7 @@ export default function QuizzPage() {
 
     // Cleanup listener
     return () => unsubscribe();
-  }, [isAuthenticated]);
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password === 'Azara') {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('quizz-auth', 'true');
-      setError('');
-    } else {
-      setError('Mot de passe incorrect');
-    }
-  };
-
-  if (!isAuthenticated) {
-    return (
-      <div style={styles.loginContainer}>
-        <div style={styles.loginCard}>
-          <h1>🔒 Accès Protégé</h1>
-          <p>Cette page nécessite un mot de passe</p>
-          <form onSubmit={handleLogin}>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Mot de passe"
-              style={styles.passwordInput}
-              autoFocus
-            />
-            {error && <p style={styles.error}>{error}</p>}
-            <button type="submit" style={styles.loginBtn}>
-              Accéder
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
+  }, []);
 
   return (
     <div style={styles.page}>
@@ -260,48 +213,5 @@ const styles: { [key: string]: CSSProperties } = {
     fontSize: '1rem',
     color: '#6b7280',
     fontWeight: 'normal',
-  },
-  loginContainer: {
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    padding: '2rem',
-  },
-  loginCard: {
-    background: 'white',
-    borderRadius: '16px',
-    padding: '3rem',
-    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-    maxWidth: '400px',
-    width: '100%',
-    textAlign: 'center',
-    color: '#1f2937',
-  },
-  passwordInput: {
-    padding: '1rem',
-    border: '2px solid #e5e7eb',
-    borderRadius: '8px',
-    fontSize: '1rem',
-    width: '100%',
-    boxSizing: 'border-box',
-    marginBottom: '1rem',
-  },
-  error: {
-    color: '#ef4444',
-    margin: '0 0 1rem 0',
-    fontSize: '0.875rem',
-  },
-  loginBtn: {
-    padding: '1rem',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '1rem',
-    fontWeight: 600,
-    cursor: 'pointer',
-    width: '100%',
   },
 };
