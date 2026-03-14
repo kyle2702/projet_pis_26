@@ -189,6 +189,7 @@ const styles: { [key: string]: CSSProperties } = {
     fontWeight: 'bold',
     minWidth: '60px',
     textAlign: 'center',
+    color: '#1f2937',
   },
   teamInfo: {
     flex: 1,
