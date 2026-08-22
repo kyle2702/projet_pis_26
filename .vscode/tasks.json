@@ -4,31 +4,16 @@
 		{
 			"label": "Build Frontend with Vite",
 			"type": "shell",
-			"command": "npm run build",
-			"args": [],
-			"isBackground": false,
-			"problemMatcher": [
-				"$eslint-stylish"
+			"command": "npm",
+			"args": [
+				"run",
+				"build"
 			],
-			"group": "build"
-		},
-		{
-			"label": "Build Frontend with Vite",
-			"type": "shell",
-			"command": "npm run build",
-			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}/Frontend"
+			},
 			"isBackground": false,
-			"problemMatcher": [
-				"$eslint-stylish"
-			],
-			"group": "build"
-		},
-		{
-			"label": "Build Frontend with Vite",
-			"type": "shell",
-			"command": "npm run build",
-			"args": [],
-			"isBackground": false,
+			"problemMatcher": [],
 			"group": "build"
 		}
 	]
