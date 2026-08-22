@@ -1,13 +1,13 @@
 .footer {
-  background-color: #1a1a1a;
+  background: linear-gradient(110deg, #0f172a 0%, #1e293b 65%, #0f766e 100%);
   padding: 0.5rem 0.75rem; /* plus compact */
   text-align: center; /* texte centré */
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.92);
   font-size: 0.85rem; /* plus petit */
   line-height: 1.2;
   box-sizing: border-box;
-  border-top: 1px solid rgba(255,255,255,0.08);
-  backdrop-filter: saturate(1.1) blur(6px);
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  backdrop-filter: saturate(1.15) blur(8px);
   width: 100%;
 }
 

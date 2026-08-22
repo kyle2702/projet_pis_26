@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import './HomePage.css';
 
 const HomePage: React.FC = () => {
   const [username, setUsername] = useState('');
@@ -53,131 +54,68 @@ const HomePage: React.FC = () => {
     logout();
   };
 
-  const styles: { [key: string]: React.CSSProperties } = {
-    container: {
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingTop: '2rem',
-      textAlign: 'center',
-    },
-    loginForm: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '1rem',
-      width: 'fit-content',
-      minWidth: '280px',
-      maxWidth: '90vw',
-      padding: '2rem',
-      border: '1px solid #e0e0e0',
-      borderRadius: '8px',
-      backgroundColor: '#fdfdfd',
-      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.05)',
-      alignItems: 'center',
-      margin: '0 auto'
-    },
-    formGroup: {
-      display: 'flex',
-      flexDirection: 'column',
-      textAlign: 'left',
-    },
-    label: {
-      marginBottom: '0.5rem',
-      fontWeight: 'bold',
-      color: '#333',
-    },
-    input: {
-      padding: '0.75rem',
-      border: '1px solid #ccc',
-      borderRadius: '4px',
-      fontSize: '1rem',
-  width: '280px',
-  boxSizing: 'border-box'
-    },
-    button: {
-      padding: '0.75rem',
-      border: 'none',
-      borderRadius: '4px',
-      color: 'white',
-      fontSize: '1rem',
-      fontWeight: 'bold',
-      cursor: 'pointer',
-      transition: 'background-color 0.2s',
-    },
-    loginButton: {
-      backgroundColor: '#646cff',
-    },
-    logoutButton: {
-      backgroundColor: '#d9534f',
-      marginTop: '1rem',
-    },
-    errorMessage: {
-      color: '#d9534f',
-      textAlign: 'center',
-      marginTop: 0,
-      marginBottom: '1rem',
-    },
-    passwordWrapper: { position: 'relative', width: 'fit-content', minWidth: '280px', maxWidth: '90vw' },
-    toggleBtn: {
-      position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
-      background: 'transparent', border: 'none', cursor: 'pointer', color: '#555',
-      padding: 4, fontSize: '.9rem'
-    }
-  };
-
   // Afficher un message de chargement pendant la vérification de l'authentification
   if (isLoading) {
-    return <div style={styles.container}><p>Loading...</p></div>;
+    return (
+      <section className="home-shell" aria-live="polite">
+        <div className="home-bg-orb home-bg-orb-a" />
+        <div className="home-bg-orb home-bg-orb-b" />
+        <div className="home-card home-loading">Chargement...</div>
+      </section>
+    );
   }
 
   return (
-    <div style={styles.container} className="max-w-screen-sm w-full mx-auto px-4 sm:px-6">
+    <section className="home-shell" aria-live="polite">
+      <div className="home-bg-orb home-bg-orb-a" />
+      <div className="home-bg-orb home-bg-orb-b" />
       {token ? (
         // Vue si l'utilisateur est connecté
-        <div>
-          <h1>Bienvenue, {firestoreName || loggedInUser?.displayName || 'Utilisateur'}</h1>
-          
-          <button 
-            onClick={handleLogout} 
-            style={{ ...styles.button, ...styles.logoutButton }}
-          >
-            Logout
+        <div className="home-card home-card-logged">
+          <p className="home-kicker">Session active</p>
+          <h1 className="home-title">Bienvenue, {firestoreName || loggedInUser?.displayName || 'Utilisateur'}</h1>
+          <p className="home-subtitle">Tu es connecté. Tu peux acceder aux jobs et au calendrier.</p>
+          <button onClick={handleLogout} className="home-logout-btn">
+            Se deconnecter
           </button>
         </div>
       ) : (
         // Vue si l'utilisateur n'est pas connecté (formulaire)
-        <>
-      <h1>Connexion</h1>
-          <form onSubmit={handleSubmit} style={styles.loginForm} className="w-full">
-            <div style={styles.formGroup}>
-        <label htmlFor="username" style={styles.label}>Email</label>
+        <div className="home-card">
+          <p className="home-kicker">Espace equipe</p>
+          <h1 className="home-title">Connexion</h1>
+          <p className="home-subtitle">Accede a ton tableau de bord en quelques secondes.</p>
+          <form onSubmit={handleSubmit} className="home-form" noValidate>
+            <div className="home-form-group">
+              <label htmlFor="username" className="home-label">Email</label>
               <input
-                type="text"
+                type="email"
                 id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
-                style={styles.input}
+                className="home-input"
+                autoComplete="email"
               />
             </div>
-            <div style={styles.formGroup}>
-              <label htmlFor="password" style={styles.label}>Password</label>
-              <div style={styles.passwordWrapper}>
+            <div className="home-form-group">
+              <label htmlFor="password" className="home-label">Mot de passe</label>
+              <div className="home-password-wrap">
                 <input
                   type={showPwd ? 'text' : 'password'}
                   id="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  style={{ ...styles.input, paddingRight: 40 }}
+                  className="home-input home-password-input"
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
                   aria-label={showPwd ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                   onClick={() => setShowPwd(s => !s)}
-                  style={styles.toggleBtn}
                   title={showPwd ? 'Masquer' : 'Afficher'}
+                  className="home-toggle-btn"
                 >
                   {showPwd ? (
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -196,18 +134,14 @@ const HomePage: React.FC = () => {
                 </button>
               </div>
             </div>
-            {error && <p style={styles.errorMessage}>{error}</p>}
-            <button 
-              type="submit" 
-              style={{ ...styles.button, ...styles.loginButton }}
-            >
+            {error && <p className="home-error">{error}</p>}
+            <button type="submit" className="home-submit-btn">
               Connexion
             </button>
-          
           </form>
-        </>
+        </div>
       )}
-    </div>
+    </section>
   );
 };
 
