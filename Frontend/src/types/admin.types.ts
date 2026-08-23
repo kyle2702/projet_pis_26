@@ -42,4 +42,23 @@ export interface NotificationResult {
   hasToken?: boolean;
   sentWebPush?: boolean;
   hasSub?: boolean;
+  debug?: {
+    uid?: string;
+    nid?: string;
+    tokenCount?: number;
+    tokenSuffixes?: string[];
+    webPushConfigured?: boolean;
+    fcmSuccessCount?: number;
+    fcmFailureCount?: number;
+    invalidTokenCleanupCount?: number;
+    fcmErrors?: Array<{
+      tokenSuffix: string;
+      code: string;
+      message: string;
+    }>;
+    webPushError?: {
+      statusCode?: number;
+      message: string;
+    } | null;
+  };
 }

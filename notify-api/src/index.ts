@@ -486,6 +486,11 @@ app.post('/notify/test', requireAuth, async (req: Request, res: Response) => {
     
     let sentFCM = false;
     let sentWebPush = false;
+    let fcmSuccessCount = 0;
+    let fcmFailureCount = 0;
+    let invalidTokenCleanupCount = 0;
+    const fcmErrors: Array<{ tokenSuffix: string; code: string; message: string }> = [];
+    let webPushError: { statusCode?: number; message: string } | null = null;
     
     // Envoyer via FCM si le token existe
     if (tokens.length) {
@@ -507,16 +512,33 @@ app.post('/notify/test', requireAuth, async (req: Request, res: Response) => {
             fcmOptions: { link },
           },
         });
+        fcmSuccessCount = resp.successCount;
+        fcmFailureCount = resp.failureCount;
         sentFCM = resp.successCount > 0;
         console.log(`[Test] FCM envoyé à ${uid}`);
 
         const invalidCodes = new Set(['messaging/invalid-registration-token', 'messaging/registration-token-not-registered']);
-        const toDelete = resp.responses
-          .map((r: any, i: number) => (!r.success && r.error && invalidCodes.has((r.error as any).code) ? tokens[i] : null))
-          .filter(Boolean) as string[];
+        const toDelete: string[] = [];
+        resp.responses.forEach((r: any, i: number) => {
+          if (r.success) return;
+          const errCode = (r.error as any)?.code || 'unknown';
+          const errMsg = (r.error as any)?.message || 'unknown error';
+          fcmErrors.push({
+            tokenSuffix: tokens[i] ? tokens[i].slice(-12) : 'unknown',
+            code: String(errCode),
+            message: String(errMsg),
+          });
+          if (r.error && invalidCodes.has(errCode)) toDelete.push(tokens[i]);
+        });
         await cleanupInvalidTokens(toDelete);
+        invalidTokenCleanupCount = toDelete.length;
       } catch (e: any) {
         console.error('[Test] Erreur FCM:', e);
+        fcmErrors.push({
+          tokenSuffix: 'multicast',
+          code: String(e?.code || 'fcm-send-failed'),
+          message: String(e?.message || 'FCM send failure'),
+        });
       }
     }
     
@@ -534,6 +556,7 @@ app.post('/notify/test', requireAuth, async (req: Request, res: Response) => {
       } catch (e: any) {
         console.error('[Test] Erreur Web Push:', e);
         const code = e?.statusCode;
+        webPushError = { statusCode: code, message: String(e?.message || 'WebPush send failure') };
         if (code === 404 || code === 410) {
           await db.collection('webPushSubs').doc(uid).delete();
           console.log(`[Test] Subscription Web Push invalide supprimée pour ${uid}`);
@@ -547,7 +570,19 @@ app.post('/notify/test', requireAuth, async (req: Request, res: Response) => {
       sentWebPush,
       hasToken: tokens.length > 0,
       hasSub: !!sub,
-      message: sentFCM || sentWebPush ? 'Notification envoyée' : 'Aucun token/subscription trouvé'
+      message: sentFCM || sentWebPush ? 'Notification envoyée' : 'Aucun token/subscription trouvé',
+      debug: {
+        uid,
+        nid,
+        tokenCount: tokens.length,
+        tokenSuffixes: tokens.map((t) => t.slice(-12)),
+        webPushConfigured: Boolean(WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY),
+        fcmSuccessCount,
+        fcmFailureCount,
+        invalidTokenCleanupCount,
+        fcmErrors,
+        webPushError,
+      },
     });
   } catch (e) {
     console.error('[Test] Erreur:', e);

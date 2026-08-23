@@ -3,9 +3,10 @@
  */
 
 import React, { useState } from 'react';
+import type { NotificationResult } from '../../types/admin.types';
 
 interface TestNotificationProps {
-  onSend: (title: string, body: string) => Promise<{ sentFCM?: boolean; hasToken?: boolean; sentWebPush?: boolean; hasSub?: boolean }>;
+  onSend: (title: string, body: string) => Promise<NotificationResult>;
 }
 
 export const TestNotification: React.FC<TestNotificationProps> = ({ onSend }) => {
@@ -29,6 +30,25 @@ export const TestNotification: React.FC<TestNotificationProps> = ({ onSend }) =>
       if (result.sentWebPush) statusMsg += '• Web Push: ✓ Envoyé\n';
       else if (result.hasSub) statusMsg += '• Web Push: ⚠️ Subscription trouvée mais non envoyée\n';
       else statusMsg += '• Web Push: ✗ Aucune subscription\n';
+
+      if (result.debug) {
+        statusMsg += '\n--- Debug backend ---\n';
+        statusMsg += `• tokenCount: ${result.debug.tokenCount ?? 0}\n`;
+        statusMsg += `• fcmSuccess/failure: ${result.debug.fcmSuccessCount ?? 0}/${result.debug.fcmFailureCount ?? 0}\n`;
+        statusMsg += `• cleaned invalid tokens: ${result.debug.invalidTokenCleanupCount ?? 0}\n`;
+        statusMsg += `• webPushConfigured: ${result.debug.webPushConfigured ? 'yes' : 'no'}\n`;
+
+        if (result.debug.fcmErrors && result.debug.fcmErrors.length > 0) {
+          statusMsg += '• FCM errors:\n';
+          result.debug.fcmErrors.forEach((err, idx) => {
+            statusMsg += `  ${idx + 1}) ${err.code} [..${err.tokenSuffix}] ${err.message}\n`;
+          });
+        }
+
+        if (result.debug.webPushError) {
+          statusMsg += `• WebPush error: ${result.debug.webPushError.statusCode ?? 'n/a'} ${result.debug.webPushError.message}\n`;
+        }
+      }
       
       statusMsg += '\nVérifiez la cloche de notification.';
       setMessage(statusMsg);
