@@ -119,10 +119,12 @@ app.post('/notify/new-job', requireAdmin, async (req: Request, res: Response) =>
   try {
   const tokens = await getAllTokens();
   const subs = WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY ? await getAllWebPushSubs() : [];
-  // Construire un envoi exclusif par utilisateur: si sub Web Push existe => prioriser Web Push (retirer du lot FCM)
-  const usersWithWebPush = new Set(subs.map(s => s.userId));
-  const fcmTokensFiltered = tokens.filter(t => !usersWithWebPush.has(t.userId));
+  // FCM prioritaire. Web Push est un secours pour les utilisateurs sans token FCM.
+  const usersWithFcm = new Set(tokens.map(t => t.userId));
+  const webPushSubsFallback = subs.filter(s => !usersWithFcm.has(s.userId));
   const nid = buildNid('new_job', String(jobId));
+  const pushTitle = 'Nouveau job disponible';
+  const pushBody = String(title);
     // Notifications Firestore
     const batch = db.batch();
     const createdAt = admin.firestore.FieldValue.serverTimestamp();
@@ -141,20 +143,32 @@ app.post('/notify/new-job', requireAdmin, async (req: Request, res: Response) =>
     await batch.commit();
 
   // Push FCM
-  const tokenList = fcmTokensFiltered.map(t => t.token);
+  const tokenList = tokens.map(t => t.token);
     if (tokenList.length) {
       const resp = await admin.messaging().sendEachForMulticast({
         tokens: tokenList,
+        notification: {
+          title: pushTitle,
+          body: pushBody,
+        },
         // Unifier les clés pour le SW: title/body/link/nid (tout en string)
         data: {
           link,
           jobId: String(jobId),
-          title: 'Nouveau job disponible',
-          body: String(title),
+          title: pushTitle,
+          body: pushBody,
           nid,
           type: 'new_job',
         },
-        webpush: { fcmOptions: { link } },
+        webpush: {
+          fcmOptions: { link },
+          notification: {
+            title: pushTitle,
+            body: pushBody,
+            icon: '/logo_pionniers.avif',
+            tag: nid,
+          },
+        },
       });
       // Cleanup tokens invalides
       const invalidCodes = new Set(['messaging/invalid-registration-token', 'messaging/registration-token-not-registered']);
@@ -169,15 +183,15 @@ app.post('/notify/new-job', requireAdmin, async (req: Request, res: Response) =>
       }
     }
     // Web Push (iOS/Safari et navigateurs compatibles)
-    if (subs.length) {
-        const payload = JSON.stringify({ title: 'Nouveau job disponible', body: String(title), link, nid });
-        const results = await Promise.allSettled(subs.map(({ subscription }) => webpush.sendNotification(subscription, payload)));
+    if (webPushSubsFallback.length) {
+      const payload = JSON.stringify({ title: pushTitle, body: pushBody, link, nid });
+        const results = await Promise.allSettled(webPushSubsFallback.map(({ subscription }) => webpush.sendNotification(subscription, payload)));
         const toDelete: string[] = [];
         results.forEach((r, i) => {
           if (r.status === 'rejected') {
             const err: any = r.reason;
             const code = err?.statusCode;
-            if (code === 404 || code === 410) toDelete.push(subs[i].userId);
+            if (code === 404 || code === 410) toDelete.push(webPushSubsFallback[i].userId);
           }
         });
         if (toDelete.length) {
@@ -215,8 +229,8 @@ app.post('/notify/new-application', requireAuth, async (req: Request, res: Respo
       }));
     }
     if (tokens.length === 0 && subs.length === 0) return res.json({ ok: true, sent: 0 });
-    const usersWithWebPush = new Set(subs.map(s => s.userId));
-    const fcmTokensFiltered = tokens.filter(t => !usersWithWebPush.has(t.userId));
+    const usersWithFcm = new Set(tokens.map(t => t.userId));
+    const webPushSubsFallback = subs.filter(s => !usersWithFcm.has(s.userId));
 
     // Écrit une notification Firestore (type: new_application) pour chaque admin
     const batch = db.batch();
@@ -236,52 +250,54 @@ app.post('/notify/new-application', requireAuth, async (req: Request, res: Respo
     await batch.commit();
 
     // Push FCM uniquement aux admins
-    const tokenList = fcmTokensFiltered.map(t => t.token);
-    const resp = await admin.messaging().sendEachForMulticast({
-      tokens: tokenList,
-      // Fournir title/body cohérents pour l'affichage côté SW
-      data: {
-        link,
-        jobId: String(jobId),
-        jobTitle: String(jobTitle),
-        applicantId: String(applicantId),
-        applicantName: String(applicantName || ''),
-        title: 'Nouvelle candidature',
-        body: `${applicantName ? applicantName + ' a p' : 'Un utilisateur a p'}ostulé: ${jobTitle}`,
-        nid,
-        type: 'new_application',
-      },
-      webpush: { fcmOptions: { link } },
-    });
+    const tokenList = tokens.map(t => t.token);
+    if (tokenList.length) {
+      const resp = await admin.messaging().sendEachForMulticast({
+        tokens: tokenList,
+        // Fournir title/body cohérents pour l'affichage côté SW
+        data: {
+          link,
+          jobId: String(jobId),
+          jobTitle: String(jobTitle),
+          applicantId: String(applicantId),
+          applicantName: String(applicantName || ''),
+          title: 'Nouvelle candidature',
+          body: `${applicantName ? applicantName + ' a p' : 'Un utilisateur a p'}ostulé: ${jobTitle}`,
+          nid,
+          type: 'new_application',
+        },
+        webpush: { fcmOptions: { link } },
+      });
 
-    // Cleanup tokens invalides
-    const invalidCodes = new Set(['messaging/invalid-registration-token', 'messaging/registration-token-not-registered']);
-    const toDelete = resp.responses
-      .map((r: any, i: number) => (!r.success && r.error && invalidCodes.has((r.error as any).code) ? tokenList[i] : null))
-      .filter(Boolean) as string[];
-    if (toDelete.length) {
-      const snap = await db.collection('fcmTokens').where('token', 'in', toDelete).get();
-      const cleanup = db.batch();
-      snap.forEach((d) => cleanup.delete(d.ref));
-      await cleanup.commit();
+      // Cleanup tokens invalides
+      const invalidCodes = new Set(['messaging/invalid-registration-token', 'messaging/registration-token-not-registered']);
+      const toDelete = resp.responses
+        .map((r: any, i: number) => (!r.success && r.error && invalidCodes.has((r.error as any).code) ? tokenList[i] : null))
+        .filter(Boolean) as string[];
+      if (toDelete.length) {
+        const snap = await db.collection('fcmTokens').where('token', 'in', toDelete).get();
+        const cleanup = db.batch();
+        snap.forEach((d) => cleanup.delete(d.ref));
+        await cleanup.commit();
+      }
     }
 
     // Web Push vers les admins
   if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
-      if (subs.length) {
+      if (webPushSubsFallback.length) {
         const payload = JSON.stringify({
           title: 'Nouvelle candidature',
           body: `${applicantName ? applicantName + ' a p' : 'Un utilisateur a p'}ostulé: ${jobTitle}`,
           link,
           nid,
         });
-        const results = await Promise.allSettled(subs.map(({ subscription }) => webpush.sendNotification(subscription, payload)));
+        const results = await Promise.allSettled(webPushSubsFallback.map(({ subscription }) => webpush.sendNotification(subscription, payload)));
         const toDelete: string[] = [];
         results.forEach((r, i) => {
           if (r.status === 'rejected') {
             const err: any = r.reason;
             const code = err?.statusCode;
-            if (code === 404 || code === 410) toDelete.push(subs[i].userId);
+            if (code === 404 || code === 410) toDelete.push(webPushSubsFallback[i].userId);
           }
         });
         if (toDelete.length) {
@@ -322,8 +338,8 @@ app.post('/notify/application-accepted', requireAdmin, async (req: Request, res:
       createdAt,
       readBy: [],
     });
-  // Push FCM au candidat (si pas déjà Web Push)
-    if (token && !sub) {
+  // Push FCM au candidat (prioritaire)
+    if (token) {
       await admin.messaging().send({
         token,
         data: {
@@ -338,9 +354,9 @@ app.post('/notify/application-accepted', requireAdmin, async (req: Request, res:
         webpush: { fcmOptions: { link } },
       });
     }
-  // Web Push au candidat
+  // Web Push au candidat (secours si pas de token FCM)
   if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
-    if (sub) {
+    if (sub && !token) {
         await webpush.sendNotification(sub, JSON.stringify({
           title: 'Candidature acceptée',
           body: `Votre candidature a été acceptée: ${jobTitle}`,
@@ -349,7 +365,7 @@ app.post('/notify/application-accepted', requireAdmin, async (req: Request, res:
         }));
       }
     }
-  return res.json({ ok: true, sent: (token && !sub ? 1 : 0) + (sub ? 1 : 0) });
+  return res.json({ ok: true, sent: (token ? 1 : 0) + (sub && !token ? 1 : 0) });
   } catch (e) {
     console.error('notify/application-accepted error', e);
     return res.status(500).json({ error: 'Internal error' });

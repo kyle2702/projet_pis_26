@@ -342,12 +342,15 @@ export class JobsService {
 
       const auth = getFirebaseAuth();
       const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        throw new Error('Token utilisateur manquant pour notify/new-job');
+      }
 
-      await fetch(`${apiUrl.replace(/\/$/, '')}/notify/new-job`, {
+      const response = await fetch(`${apiUrl.replace(/\/$/, '')}/notify/new-job`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
+          Authorization: `Bearer ${idToken}`
         },
         body: JSON.stringify({
           jobId,
@@ -355,8 +358,13 @@ export class JobsService {
           places: Number(formData.places)
         })
       });
+
+      if (!response.ok) {
+        const details = await response.text().catch(() => '');
+        throw new Error(`notify/new-job HTTP ${response.status}: ${details || response.statusText}`);
+      }
     } catch (error) {
-      console.warn('Notification email backend failed (ignored):', error);
+      console.warn('Notification push backend failed (notify/new-job):', error);
     }
   }
 
@@ -375,12 +383,15 @@ export class JobsService {
 
       const auth = getFirebaseAuth();
       const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        throw new Error('Token utilisateur manquant pour notify/new-application');
+      }
 
-      await fetch(`${apiUrl.replace(/\/$/, '')}/notify/new-application`, {
+      const response = await fetch(`${apiUrl.replace(/\/$/, '')}/notify/new-application`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
+          Authorization: `Bearer ${idToken}`
         },
         body: JSON.stringify({
           jobId,
@@ -389,8 +400,13 @@ export class JobsService {
           applicantName
         })
       });
+
+      if (!response.ok) {
+        const details = await response.text().catch(() => '');
+        throw new Error(`notify/new-application HTTP ${response.status}: ${details || response.statusText}`);
+      }
     } catch (error) {
-      console.warn('Notification email backend failed (ignored):', error);
+      console.warn('Notification push backend failed (notify/new-application):', error);
     }
   }
 

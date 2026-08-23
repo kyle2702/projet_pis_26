@@ -1,4 +1,4 @@
-import { getToken, onMessage, isSupported, type Messaging, type MessagePayload } from 'firebase/messaging';
+import { getToken, deleteToken, onMessage, isSupported, type Messaging, type MessagePayload } from 'firebase/messaging';
 import { getFirestore, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getApp, initializeApp } from 'firebase/app';
 
@@ -19,13 +19,13 @@ function getFirebaseApp() {
   }
 }
 
-export async function initMessagingAndGetToken(userId: string): Promise<string | null> {
+export async function initMessagingAndGetToken(userId: string, forceRefresh = false): Promise<string | null> {
   const supported = await isSupported();
   if (!supported) return null;
   const app = getFirebaseApp();
   const { getMessaging } = await import('firebase/messaging');
   const messaging: Messaging = getMessaging(app);
-  const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
+  const vapidKey = (import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined)?.trim();
   if (!vapidKey) {
     console.warn('VAPID key manquante (VITE_FIREBASE_VAPID_KEY). Messaging non initialisé.');
     return null;
@@ -35,8 +35,18 @@ export async function initMessagingAndGetToken(userId: string): Promise<string |
     console.log('[FCM] Attente du service worker ready...');
     const swReg = await navigator.serviceWorker.ready;
     console.log('[FCM] Service worker ready, demande du token...');
-    
-    const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swReg });
+
+    let token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swReg });
+
+    if (forceRefresh && !token) {
+      try {
+        console.log('[FCM] Aucun token recupere, tentative deleteToken + retry...');
+        await deleteToken(messaging);
+      } catch (e) {
+        console.warn('[FCM] deleteToken a echoue (non bloquant):', e);
+      }
+      token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swReg });
+    }
     if (token) {
       console.log('[FCM] Token obtenu, enregistrement dans Firestore...');
       const db = getFirestore(app);

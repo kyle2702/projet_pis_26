@@ -266,10 +266,10 @@ const ProfilePage: React.FC = () => {
           return;
         }
       }
-      // D'abord tenter FCM (Android/Chrome)
-      const fcmTok = await initMessagingAndGetToken(user.uid);
+      // D'abord tenter FCM (Android/Chrome) avec renouvellement force du token
+      const fcmTok = await initMessagingAndGetToken(user.uid, true);
       if (fcmTok) {
-        setNotifMsg('Notifications activées (FCM).');
+        setNotifMsg('Notifications activées (FCM) et token renouvelé.');
         setNotifPermission('granted');
         return;
       }
@@ -285,6 +285,56 @@ const ProfilePage: React.FC = () => {
       } else {
         setNotifMsg('Notifications non supportées sur ce navigateur.');
       }
+    } finally {
+      setNotifBusy(false);
+    }
+  }
+
+  async function handleRefreshNotificationToken() {
+    setNotifMsg(null);
+    if (!user) { setNotifMsg('Veuillez vous connecter.'); return; }
+    if (notifPermission === 'unsupported') { setNotifMsg('Notifications non supportées sur cet appareil.'); return; }
+
+    try {
+      setNotifBusy(true);
+      try { await navigator.serviceWorker.register('/firebase-messaging-sw.js'); } catch { /* noop */ }
+
+      const current = Notification.permission;
+      if (current === 'denied') {
+        setNotifMsg('Notifications refusées. Activez-les dans Réglages/Paramètres puis réessayez.');
+        return;
+      }
+
+      let granted = current === 'granted';
+      if (!granted) {
+        const res: NotificationPermission = await Notification.requestPermission().catch(() => 'denied' as NotificationPermission);
+        granted = res === 'granted';
+        setNotifPermission(res);
+        if (!granted) {
+          setNotifMsg('Permission non accordée.');
+          return;
+        }
+      }
+
+      const fcmTok = await initMessagingAndGetToken(user.uid, true);
+      if (fcmTok) {
+        setNotifMsg('Token de notifications renouvelé avec succès (FCM).');
+        setNotifPermission('granted');
+        return;
+      }
+
+      if (isWebPushSupported()) {
+        if (!idToken) {
+          setNotifMsg('Session invalide, reconnectez-vous.');
+          return;
+        }
+        const ok = await subscribeWebPush(user.uid, idToken);
+        setNotifMsg(ok ? 'Token FCM indisponible, Web Push reconfiguré.' : 'Échec du renouvellement FCM/Web Push.');
+        if (ok) setNotifPermission('granted');
+        return;
+      }
+
+      setNotifMsg('Renouvellement impossible sur ce navigateur.');
     } finally {
       setNotifBusy(false);
     }
@@ -389,7 +439,13 @@ const ProfilePage: React.FC = () => {
   <section style={styles.section} className="w-full">
           <h2 style={{ marginTop:0, color: 'var(--color-text)' }}>Notifications</h2>
           {notifPermission === 'granted' ? (
-            <div>Notifications déjà activées.</div>
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
+              <div>Notifications déjà activées.</div>
+              <button style={styles.btn} onClick={handleRefreshNotificationToken} disabled={notifBusy}>
+                {notifBusy ? 'Renouvellement…' : 'Renouveler le token'}
+              </button>
+              {notifMsg && <div style={{ maxWidth: 320 }}>{notifMsg}</div>}
+            </div>
           ) : (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
               <div style={{ maxWidth: 320 }}>Activez les notifications pour recevoir les alertes des nouveaux jobs et mises à jour.</div>
