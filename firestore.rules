@@ -71,6 +71,14 @@ service cloud.firestore {
       allow delete: if isUser(userId) || isAdmin();
     }
 
+    // Jetons FCM multi-appareils (v2)
+    match /fcmTokensV2/{tokenDocId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid || isAdmin();
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid || isAdmin();
+    }
+
     // Fallback deny
     match /{document=**} {
       allow read, write: if false;

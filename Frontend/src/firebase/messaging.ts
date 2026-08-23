@@ -51,7 +51,14 @@ export async function initMessagingAndGetToken(userId: string, forceRefresh = fa
       console.log('[FCM] Token obtenu, enregistrement dans Firestore...');
       const db = getFirestore(app);
       const ref = doc(db, 'fcmTokens', userId);
+      const encodedToken = encodeURIComponent(token);
+      const v2Ref = doc(db, 'fcmTokensV2', `${userId}__${encodedToken}`);
       await setDoc(ref, {
+        token,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      await setDoc(v2Ref, {
+        userId,
         token,
         updatedAt: serverTimestamp(),
       }, { merge: true });

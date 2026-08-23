@@ -70,13 +70,34 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 async function getAllTokens(): Promise<Array<{ userId: string; token: string }>> {
-  const snap = await db.collection('fcmTokens').get();
-  const list: { userId: string; token: string }[] = [];
-  snap.forEach((doc) => {
+  const out: { userId: string; token: string }[] = [];
+  const seen = new Set<string>();
+
+  // Legacy: un token par utilisateur dans fcmTokens/{uid}
+  const legacy = await db.collection('fcmTokens').get();
+  legacy.forEach((doc) => {
     const token = (doc.data() as any)?.token as string | undefined;
-    if (token) list.push({ userId: doc.id, token });
+    if (!token) return;
+    const key = `${doc.id}|${token}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ userId: doc.id, token });
   });
-  return list;
+
+  // V2: multi-appareils dans fcmTokensV2/{uid__encodedToken}
+  const v2 = await db.collection('fcmTokensV2').get();
+  v2.forEach((doc) => {
+    const d = doc.data() as any;
+    const userId = d?.userId as string | undefined;
+    const token = d?.token as string | undefined;
+    if (!userId || !token) return;
+    const key = `${userId}|${token}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ userId, token });
+  });
+
+  return out;
 }
 
 async function getAdminTokens(): Promise<Array<{ userId: string; token: string }>> {
@@ -85,15 +106,63 @@ async function getAdminTokens(): Promise<Array<{ userId: string; token: string }
   const adminIds = new Set<string>();
   adminsSnap.forEach(d => adminIds.add(d.id));
   if (adminIds.size === 0) return [];
-  // Pour chaque admin, récupérer son token dans fcmTokens/{uid}
+  // Pour chaque admin, récupérer ses tokens (legacy + v2)
   const list: { userId: string; token: string }[] = [];
+  const seen = new Set<string>();
   const reads = Array.from(adminIds).map(async (uid) => {
-    const ref = await db.collection('fcmTokens').doc(uid).get();
-    const token = ref.exists ? (ref.data() as any)?.token as string | undefined : undefined;
-    if (token) list.push({ userId: uid, token });
+    const userTokens = await getUserTokens(uid);
+    userTokens.forEach((token) => {
+      const key = `${uid}|${token}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      list.push({ userId: uid, token });
+    });
   });
   await Promise.all(reads);
   return list;
+}
+
+async function getUserTokens(userId: string): Promise<string[]> {
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  const legacy = await db.collection('fcmTokens').doc(userId).get();
+  const legacyToken = legacy.exists ? (legacy.data() as any)?.token as string | undefined : undefined;
+  if (legacyToken && !seen.has(legacyToken)) {
+    seen.add(legacyToken);
+    out.push(legacyToken);
+  }
+
+  const v2 = await db.collection('fcmTokensV2').where('userId', '==', userId).get();
+  v2.forEach((doc) => {
+    const token = (doc.data() as any)?.token as string | undefined;
+    if (token && !seen.has(token)) {
+      seen.add(token);
+      out.push(token);
+    }
+  });
+
+  return out;
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+async function cleanupInvalidTokens(invalidTokens: string[]): Promise<void> {
+  if (!invalidTokens.length) return;
+  const chunks = chunk(invalidTokens, 10);
+
+  for (const c of chunks) {
+    const legacySnap = await db.collection('fcmTokens').where('token', 'in', c).get();
+    const v2Snap = await db.collection('fcmTokensV2').where('token', 'in', c).get();
+    const batch = db.batch();
+    legacySnap.forEach((d) => batch.delete(d.ref));
+    v2Snap.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
 }
 
 async function getAllWebPushSubs(): Promise<Array<{ userId: string; subscription: PushSubscription }>> {
@@ -175,12 +244,7 @@ app.post('/notify/new-job', requireAdmin, async (req: Request, res: Response) =>
       const toDelete = resp.responses
         .map((r: any, i: number) => (!r.success && r.error && invalidCodes.has((r.error as any).code) ? tokenList[i] : null))
         .filter(Boolean) as string[];
-      if (toDelete.length) {
-        const snap = await db.collection('fcmTokens').where('token', 'in', toDelete).get();
-        const cleanup = db.batch();
-        snap.forEach((d) => cleanup.delete(d.ref));
-        await cleanup.commit();
-      }
+      await cleanupInvalidTokens(toDelete);
     }
     // Web Push (iOS/Safari et navigateurs compatibles)
     if (webPushSubsFallback.length) {
@@ -274,12 +338,7 @@ app.post('/notify/new-application', requireAuth, async (req: Request, res: Respo
       const toDelete = resp.responses
         .map((r: any, i: number) => (!r.success && r.error && invalidCodes.has((r.error as any).code) ? tokenList[i] : null))
         .filter(Boolean) as string[];
-      if (toDelete.length) {
-        const snap = await db.collection('fcmTokens').where('token', 'in', toDelete).get();
-        const cleanup = db.batch();
-        snap.forEach((d) => cleanup.delete(d.ref));
-        await cleanup.commit();
-      }
+      await cleanupInvalidTokens(toDelete);
     }
 
     // Web Push vers les admins
@@ -321,9 +380,8 @@ app.post('/notify/application-accepted', requireAdmin, async (req: Request, res:
   const link = `/jobs?jobId=${encodeURIComponent(jobId)}`;
   const nid = buildNid('application_accepted', String(jobId));
   try {
-    // Token du candidat
-    const tokenDoc = await db.collection('fcmTokens').doc(applicantId).get();
-    const token = tokenDoc.exists ? (tokenDoc.data() as any)?.token as string | undefined : undefined;
+    // Tokens du candidat (multi-appareils)
+    const tokens = await getUserTokens(applicantId);
     // Subscription Web Push du candidat
     const subDoc = WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY ? await db.collection('webPushSubs').doc(applicantId).get() : null;
     const sub: PushSubscription | undefined = subDoc && subDoc.exists ? (subDoc.data() as any)?.subscription as PushSubscription | undefined : undefined;
@@ -339,9 +397,13 @@ app.post('/notify/application-accepted', requireAdmin, async (req: Request, res:
       readBy: [],
     });
   // Push FCM au candidat (prioritaire)
-    if (token) {
-      await admin.messaging().send({
-        token,
+    if (tokens.length) {
+      const resp = await admin.messaging().sendEachForMulticast({
+        tokens,
+        notification: {
+          title: 'Candidature acceptée',
+          body: `Votre candidature a été acceptée: ${jobTitle}`,
+        },
         data: {
           link,
           jobId: String(jobId),
@@ -353,10 +415,15 @@ app.post('/notify/application-accepted', requireAdmin, async (req: Request, res:
         },
         webpush: { fcmOptions: { link } },
       });
+      const invalidCodes = new Set(['messaging/invalid-registration-token', 'messaging/registration-token-not-registered']);
+      const toDelete = resp.responses
+        .map((r: any, i: number) => (!r.success && r.error && invalidCodes.has((r.error as any).code) ? tokens[i] : null))
+        .filter(Boolean) as string[];
+      await cleanupInvalidTokens(toDelete);
     }
   // Web Push au candidat (secours si pas de token FCM)
   if (WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY) {
-    if (sub && !token) {
+    if (sub && tokens.length === 0) {
         await webpush.sendNotification(sub, JSON.stringify({
           title: 'Candidature acceptée',
           body: `Votre candidature a été acceptée: ${jobTitle}`,
@@ -365,7 +432,7 @@ app.post('/notify/application-accepted', requireAdmin, async (req: Request, res:
         }));
       }
     }
-  return res.json({ ok: true, sent: (token ? 1 : 0) + (sub && !token ? 1 : 0) });
+  return res.json({ ok: true, sent: (tokens.length ? tokens.length : 0) + (sub && tokens.length === 0 ? 1 : 0) });
   } catch (e) {
     console.error('notify/application-accepted error', e);
     return res.status(500).json({ error: 'Internal error' });
@@ -410,9 +477,8 @@ app.post('/notify/test', requireAuth, async (req: Request, res: Response) => {
     const link = '/';
     const nid = `test:${Date.now()}`;
     
-    // Récupérer le token FCM de l'utilisateur
-    const tokenDoc = await db.collection('fcmTokens').doc(uid).get();
-    const token = tokenDoc.exists ? (tokenDoc.data() as any)?.token as string | undefined : undefined;
+    // Récupérer les tokens FCM de l'utilisateur
+    const tokens = await getUserTokens(uid);
     
     // Récupérer la subscription Web Push de l'utilisateur
     const subDoc = WEBPUSH_PUBLIC_KEY && WEBPUSH_PRIVATE_KEY ? await db.collection('webPushSubs').doc(uid).get() : null;
@@ -422,10 +488,14 @@ app.post('/notify/test', requireAuth, async (req: Request, res: Response) => {
     let sentWebPush = false;
     
     // Envoyer via FCM si le token existe
-    if (token) {
+    if (tokens.length) {
       try {
-        await admin.messaging().send({
-          token,
+        const resp = await admin.messaging().sendEachForMulticast({
+          tokens,
+          notification: {
+            title: notifTitle,
+            body: notifBody,
+          },
           data: {
             title: notifTitle,
             body: notifBody,
@@ -437,16 +507,16 @@ app.post('/notify/test', requireAuth, async (req: Request, res: Response) => {
             fcmOptions: { link },
           },
         });
-        sentFCM = true;
+        sentFCM = resp.successCount > 0;
         console.log(`[Test] FCM envoyé à ${uid}`);
+
+        const invalidCodes = new Set(['messaging/invalid-registration-token', 'messaging/registration-token-not-registered']);
+        const toDelete = resp.responses
+          .map((r: any, i: number) => (!r.success && r.error && invalidCodes.has((r.error as any).code) ? tokens[i] : null))
+          .filter(Boolean) as string[];
+        await cleanupInvalidTokens(toDelete);
       } catch (e: any) {
         console.error('[Test] Erreur FCM:', e);
-        // Si le token est invalide, le supprimer
-        const invalidCodes = new Set(['messaging/invalid-registration-token', 'messaging/registration-token-not-registered']);
-        if (e.code && invalidCodes.has(e.code)) {
-          await db.collection('fcmTokens').doc(uid).delete();
-          console.log(`[Test] Token FCM invalide supprimé pour ${uid}`);
-        }
       }
     }
     
@@ -475,7 +545,7 @@ app.post('/notify/test', requireAuth, async (req: Request, res: Response) => {
       ok: true, 
       sentFCM, 
       sentWebPush,
-      hasToken: !!token,
+      hasToken: tokens.length > 0,
       hasSub: !!sub,
       message: sentFCM || sentWebPush ? 'Notification envoyée' : 'Aucun token/subscription trouvé'
     });
