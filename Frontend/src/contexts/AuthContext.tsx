@@ -9,9 +9,12 @@ import {
   type User as FirebaseUser,
   getIdToken,
 } from 'firebase/auth';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { initMessagingAndGetToken, listenForegroundMessages } from '../firebase/messaging';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+// firebase/messaging n'est plus importé statiquement ici: il est chargé à la demande
+// dans le bloc notifications (initNotifications), pour ne pas peser sur le chunk
+// critique du premier rendu (voir PERF_BASELINE.md phase 3.1).
 import { isWebPushSupported, subscribeWebPush, unsubscribeWebPush } from '../webpush';
+import { Toast } from '../components/ui/Toast';
 
 type PublicUser = {
   uid: string;
@@ -51,6 +54,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [rolesReady, setRolesReady] = useState(false);
+  const [foregroundToast, setForegroundToast] = useState<{ id: number; message: string } | null>(null);
+  const toastIdRef = useRef(0);
+
+  const showForegroundToast = (title: string, body?: string) => {
+    const nextId = ++toastIdRef.current;
+    const msg = body ? `${title} — ${body}` : title;
+    setForegroundToast({ id: nextId, message: msg });
+  };
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -60,27 +71,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const d = getFirestoreDb();
       unsub = onAuthStateChanged(a, async (u) => {
       if (u) {
+        // 1. L'identité est connue: on libère l'UI tout de suite (Layout, pages publiques).
         setUser(toPublicUser(u));
-        const t = await getIdToken(u, /* forceRefresh */ true).catch(() => null);
-        setToken(t);
-        tokenRef.current = t;
+        setIsLoading(false);
         setRolesReady(false);
-        // Upsert du document utilisateur minimal, sans écraser displayName existant par null
-        try {
+        // 2. Jeton sans forceRefresh (un aller-retour réseau en moins) et non attendu:
+        //    rien dans le premier écran n'en dépend (seuls les appels backend l'utilisent).
+        getIdToken(u)
+          .then((freshToken) => {
+            setToken(freshToken);
+            tokenRef.current = freshToken;
+          })
+          .catch(() => null);
+        // 3. Upsert du document utilisateur minimal, sans écraser displayName existant
+        //    par null. Volontairement non attendu: une écriture ne doit jamais retarder
+        //    la lecture du rôle admin (rolesReady) qui, elle, débloque les données.
+        {
           const userDocRef = doc(d, 'users', u.uid);
           const update: Record<string, unknown> = { email: u.email ?? null, updatedAt: serverTimestamp() };
           if (u.displayName) {
             update.displayName = u.displayName;
           }
-          await setDoc(userDocRef, update, { merge: true });
-        } catch (e) {
-          // non bloquant pour l'UI
-          console.warn('Impossible de créer/mettre à jour le profil utilisateur:', e);
+          setDoc(userDocRef, update, { merge: true }).catch((e) => {
+            console.warn('Impossible de créer/mettre à jour le profil utilisateur:', e);
+          });
         }
 
-        // Récupération du rôle admin
+        // 4. Rôle admin: 1 seule lecture, lancée en parallèle du reste. C'est elle qui
+        //    débloque useJobs (rolesReady): plus aucune cascade séquentielle au démarrage.
         try {
-          const snap = await (await import('firebase/firestore')).getDoc(doc(d, 'users', u.uid));
+          const snap = await getDoc(doc(d, 'users', u.uid));
           const isAdm = snap.exists() && snap.data()?.isAdmin === true;
           setIsAdmin(!!isAdm);
         } catch {
@@ -173,26 +193,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (allowed) {
             console.log('[FCM] Initialisation du token FCM...');
+            // Import dynamique: firebase/messaging sort ainsi du chunk critique.
+            const { initMessagingAndGetToken } = await import('../firebase/messaging');
             const tok = await initMessagingAndGetToken(u.uid);
             if (tok) {
               console.log('[FCM] ✓ Token FCM obtenu et enregistré');
               console.log('[FCM] Configuration de l\'écoute des messages en premier plan...');
+            const { listenForegroundMessages } = await import('../firebase/messaging');
               unsubMsg = await listenForegroundMessages((payload) => {
                 const title = payload.notification?.title || payload.data?.title;
                 const body = payload.notification?.body || payload.data?.body;
+                const link = payload.fcmOptions?.link || payload.data?.link || '/';
                 console.log('[FCM] 📬 Notification reçue:', { title, body });
-                // Afficher une notification native si l'app est au premier plan
+                if (title) {
+                  showForegroundToast(title, body || '');
+                }
+                // Sur mobile, showNotification via SW est souvent plus fiable que new Notification en foreground.
                 if (title && document.visibilityState === 'visible') {
-                  new Notification(title, { body: body || '', icon: '/logo_pionniers.avif' });
+                  Promise.resolve()
+                    .then(async () => {
+                      const reg = await navigator.serviceWorker.ready;
+                      if ('showNotification' in reg) {
+                        await reg.showNotification(title, {
+                          body: body || '',
+                          icon: '/logo_pionniers.avif',
+                          data: { url: link },
+                          tag: `fg:${Date.now()}`,
+                        });
+                        return;
+                      }
+                      new Notification(title, { body: body || '', icon: '/logo_pionniers.avif' });
+                    })
+                    .catch(() => {
+                      try {
+                        new Notification(title, { body: body || '', icon: '/logo_pionniers.avif' });
+                      } catch {
+                        // noop
+                      }
+                    });
                 }
               });
               console.log('[FCM] ✓ Écoute des messages configurée avec succès');
             } else {
               console.warn('[FCM] ✗ Impossible d\'obtenir le token FCM');
-              if (isWebPushSupported() && t) {
+              // Jeton résolu localement (mis en cache par le SDK): 0 aller-retour réseau.
+              const webPushToken = tokenRef.current ?? (await getIdToken(u).catch(() => null));
+              if (isWebPushSupported() && webPushToken) {
                 // Fallback Web Push pour iOS/Safari
                 console.log('[WebPush] Tentative de fallback Web Push...');
-                const ok = await subscribeWebPush(u.uid, t);
+                const ok = await subscribeWebPush(u.uid, webPushToken);
                 console.log(`[WebPush] ${ok ? '✓' : '✗'} Subscription Web Push: ${ok}`);
               } else {
                 console.warn('[Notifications] ✗ Aucun système de notification disponible');
@@ -265,6 +314,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
   <AuthContext.Provider value={{ user, token, isLoading, isAdmin, rolesReady, loginWithEmail, loginWithGoogle, logout }}>
       {children}
+      {foregroundToast && (
+        <Toast
+          key={foregroundToast.id}
+          message={foregroundToast.message}
+          type="info"
+          duration={4500}
+          onClose={() => setForegroundToast(null)}
+        />
+      )}
     </AuthContext.Provider>
   );
 };

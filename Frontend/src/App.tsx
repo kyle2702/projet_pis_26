@@ -2,13 +2,15 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { Suspense, lazy, useState } from 'react';
 import './App.css';
 import Layout from './components/Layout';
-import HackedScreen from './components/HackedScreen';
 const HomePage = lazy(() => import('./pages/HomePage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const JobsPage = lazy(() => import('./pages/JobsPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
+// Écran "hack" (easter egg): chargé à la demande, comme ses GIF (~3,2 Mo), et
+// jamais téléchargé puisqu'il n'est affiché que sur demande explicite.
+const HackedScreen = lazy(() => import('./components/HackedScreen'));
 
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -57,7 +59,11 @@ function App() {
   };
 
   if (isHacked) {
-    return <HackedScreen onUnlock={handleUnlock} />;
+    return (
+      <Suspense fallback={null}>
+        <HackedScreen onUnlock={handleUnlock} />
+      </Suspense>
+    );
   }
 
   return (

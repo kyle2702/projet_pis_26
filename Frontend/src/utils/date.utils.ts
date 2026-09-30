@@ -1,4 +1,16 @@
 /**
+ * Une mission est "à venir" quand son début est dans le futur (ou inconnu:
+ * comportement historique où l'absence de date triait en dernier).
+ *
+ * Utilisé à la fois par JobsPage (ce qui est affiché) et par useJobs (ce qui est
+ * abonné en temps réel): un seul prédicat, donc jamais de désynchronisation entre
+ * la liste affichée et les abonnements ouverts (PERF_BASELINE.md 1.3).
+ */
+export function isUpcomingJob(job: { dateBeginSort?: number }, now: number = Date.now()): boolean {
+  return (job.dateBeginSort ?? Number.POSITIVE_INFINITY) >= now;
+}
+
+/**
  * Convertit une valeur (string, Timestamp, etc.) en date affichée (format FR)
  */
 export function toDateString(val: unknown): string {

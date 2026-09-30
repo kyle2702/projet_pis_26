@@ -10,7 +10,6 @@ import {
   query,
   setDoc,
   serverTimestamp,
-  getCountFromServer,
   type Unsubscribe
 } from 'firebase/firestore';
 import { getFirestoreDb, getFirebaseAuth } from '../firebase/config';
@@ -22,34 +21,6 @@ import { toDateString, toEpochMillis, toInputLocalString } from '../utils/date.u
  */
 export class JobsService {
   private db = getFirestoreDb();
-
-  /**
-   * GET /jobs - Récupère tous les jobs
-   */
-  async getAllJobs(): Promise<Job[]> {
-    const snap = await getDocs(collection(this.db, 'jobs'));
-    const jobs: Job[] = [];
-
-    snap.docs.forEach((d) => {
-      const data = d.data();
-      jobs.push(this.mapToJob(d.id, data));
-    });
-
-    return jobs.sort((a, b) => {
-      const ta = a.dateBeginSort ?? Number.POSITIVE_INFINITY;
-      const tb = b.dateBeginSort ?? Number.POSITIVE_INFINITY;
-      return ta - tb;
-    });
-  }
-
-  /**
-   * GET /jobs/:id - Récupère un job par ID
-   */
-  async getJobById(jobId: string): Promise<Job | null> {
-    const docSnap = await getDoc(doc(this.db, 'jobs', jobId));
-    if (!docSnap.exists()) return null;
-    return this.mapToJob(docSnap.id, docSnap.data());
-  }
 
   /**
    * POST /jobs - Crée un nouveau job
@@ -86,48 +57,6 @@ export class JobsService {
   }
 
   /**
-   * GET /jobs/:id/applications - Compte les candidatures pour un job
-   */
-  async getApplicationsCount(jobId: string): Promise<number> {
-    try {
-      const countSnap = await getCountFromServer(
-        collection(this.db, `jobs/${jobId}/applications`)
-      );
-      return countSnap.data().count || 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  /**
-   * GET /jobs/:id/applications/:userId - Vérifie si l'utilisateur a postulé
-   */
-  async hasUserApplied(jobId: string, userId: string): Promise<boolean> {
-    try {
-      const userAppSnap = await getDoc(
-        doc(this.db, `jobs/${jobId}/applications/${userId}`)
-      );
-      return userAppSnap.exists();
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * GET /jobApplications/:jobId_:userId - Vérifie si candidature en attente
-   */
-  async hasUserPendingApplication(jobId: string, userId: string): Promise<boolean> {
-    try {
-      const pendingSnap = await getDoc(
-        doc(this.db, 'jobApplications', `${jobId}_${userId}`)
-      );
-      return pendingSnap.exists() && pendingSnap.data()?.status === 'pending';
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * POST /jobs/:id/apply - Postuler à un job
    */
   async applyToJob(
@@ -151,27 +80,6 @@ export class JobsService {
       },
       { merge: false }
     );
-  }
-
-  /**
-   * GET /jobs/:id/participants - Récupère les participants d'un job (admin)
-   */
-  async getParticipants(jobId: string): Promise<Participant[]> {
-    try {
-      const participantsSnap = await getDocs(
-        collection(this.db, `jobs/${jobId}/applications`)
-      );
-      return participantsSnap.docs.map(p => {
-        const pdata = p.data();
-        return {
-          userId: p.id,
-          displayName: pdata.displayName as string | undefined,
-          email: pdata.email as string | undefined
-        };
-      });
-    } catch {
-      return [];
-    }
   }
 
   /**
@@ -306,30 +214,42 @@ export class JobsService {
   }
 
   /**
-   * Souscription temps réel à l'état de candidature d'un utilisateur
+   * Souscription temps réel à l'état de candidature d'un utilisateur (désabonnement fiable)
    */
   subscribeToUserApplication(
     jobId: string,
     userId: string,
     callback: (hasApplied: boolean, isPending: boolean) => void
   ): Unsubscribe {
-    const unsubApp = onSnapshot(
+    let hasApplied = false;
+    let isPending = false;
+
+    const emit = () => callback(hasApplied, isPending);
+
+    const unsubApplied = onSnapshot(
       doc(this.db, `jobs/${jobId}/applications/${userId}`),
       (docSnap) => {
-        const hasApplied = docSnap.exists();
-        
-        // Vérifier aussi le statut pending
-        onSnapshot(
-          doc(this.db, 'jobApplications', `${jobId}_${userId}`),
-          (pendingSnap) => {
-            const isPending = pendingSnap.exists() && pendingSnap.data()?.status === 'pending';
-            callback(hasApplied, isPending);
-          }
-        );
+        hasApplied = docSnap.exists();
+        emit();
       }
     );
 
-    return unsubApp;
+    // Statut "en attente" (jobApplications): écouté une seule fois, ici.
+    const unsubPending = onSnapshot(
+      doc(this.db, 'jobApplications', `${jobId}_${userId}`),
+      (pendingSnap) => {
+        isPending = pendingSnap.exists() && pendingSnap.data()?.status === 'pending';
+        emit();
+      }
+    );
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      unsubApplied();
+      unsubPending();
+    };
   }
 
   /**

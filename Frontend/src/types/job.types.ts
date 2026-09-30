@@ -32,17 +32,6 @@ export interface JobFormData {
   places: number;
 }
 
-export interface JobApplication {
-  id: string;
-  jobId: string;
-  jobTitle: string;
-  userId: string;
-  email: string;
-  displayName: string;
-  appliedAt: unknown;
-  status: string;
-}
-
 export interface User {
   uid: string;
   displayName?: string | null;

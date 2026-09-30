@@ -26,11 +26,6 @@ export interface EditHoursModal {
   newHours: number;
 }
 
-export interface TestNotification {
-  title: string;
-  body: string;
-}
-
 export interface UserMeta {
   username: string;
   email?: string | null;

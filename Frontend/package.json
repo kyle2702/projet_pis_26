@@ -6,7 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:sourcemap": "tsc -b && vite build --sourcemap",
     "lint": "eslint .",
+    "audit": "node scripts/audit.mjs",
+    "audit:local": "node scripts/audit.mjs --local --form=both",
+    "bundle": "node scripts/bundle-anatomy.mjs",
+    "optimize:images": "node scripts/optimize-images.mjs",
+    "selfhost:fonts": "node scripts/selfhost-fonts.mjs",
+    "check:css": "node scripts/check-utilities.mjs",
+    "probe:runtime": "node scripts/runtime-probe.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -32,6 +40,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
+    "lighthouse": "^12.8.2",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.13",
     "typescript": "~5.8.3",

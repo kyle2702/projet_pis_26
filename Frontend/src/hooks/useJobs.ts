@@ -1,7 +1,8 @@
 /* eslint-disable no-useless-catch */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { jobsService } from '../api/jobs.service';
+import { isUpcomingJob } from '../utils/date.utils';
 import type {
   Job,
   JobFormData,
@@ -68,64 +69,25 @@ export const useJobs = (): UseJobsReturn => {
     })();
   }, [adminReady, isAdmin]);
 
-  // Souscription temps réel aux jobs et leurs dépendances (OPTIMISÉ)
+  // Missions "à suivre" = celles affichées par JobsPage (même prédicat exact).
+  // Seules celles-là reçoivent un abonnement temps réel: on passe ainsi de
+  // 1 + 2N abonnements (N = historique complet des missions) à
+  // 1 + 2×(missions à venir) - cf. PERF_BASELINE.md 1.3.
+  const trackedJobIdsKey = useMemo(
+    () => jobs.filter(isUpcomingJob).map(j => j.id).join('|'),
+    [jobs]
+  );
+
+  // 1. Liste des missions: la lecture est publique (firestore.rules), donc cet
+  //    abonnement ne dépend QUE de l'état d'authentification - jamais du rôle
+  //    admin. Il n'est donc plus détruit/recréé à chaque changement de rôle.
   useEffect(() => {
-    if (!adminReady) return;
+    if (authLoading) return;
     setLoading(true);
 
-    const unsubs: Array<() => void> = [];
-    const jobApplicationUnsubs = new Map<string, () => void>();
-
-    // Écouter les jobs
     const jobsUnsub = jobsService.subscribeToJobs(
-      async (jobsList) => {
+      (jobsList) => {
         setJobs(jobsList);
-        
-        // Nettoyer les subscriptions des jobs supprimés
-        const currentJobIds = new Set(jobsList.map(j => j.id));
-        for (const [jobId, unsub] of jobApplicationUnsubs.entries()) {
-          if (!currentJobIds.has(jobId)) {
-            unsub();
-            jobApplicationUnsubs.delete(jobId);
-          }
-        }
-
-        // Pour chaque job, écouter les candidatures SEULEMENT si pas déjà subscrit
-        for (const job of jobsList) {
-          if (!jobApplicationUnsubs.has(job.id)) {
-            const appsUnsub = jobsService.subscribeToApplications(
-              job.id,
-              (count, participants) => {
-                // Mise à jour par batch
-                setApplications(prev => ({ ...prev, [job.id]: count }));
-                if (isAdmin) {
-                  setJobParticipants(prev => ({ ...prev, [job.id]: participants }));
-                }
-              }
-            );
-            jobApplicationUnsubs.set(job.id, appsUnsub);
-
-            // Si utilisateur connecté, écouter son statut de candidature
-            if (user) {
-              const userAppUnsub = jobsService.subscribeToUserApplication(
-                job.id,
-                user.uid,
-                (hasApplied, isPending) => {
-                  // Mise à jour immédiate
-                  setUserApplications(prev => ({ ...prev, [job.id]: hasApplied }));
-                  setUserPendingApps(prev => ({ ...prev, [job.id]: isPending }));
-                }
-              );
-              // Combiner avec la subscription applications
-              const oldUnsub = jobApplicationUnsubs.get(job.id);
-              jobApplicationUnsubs.set(job.id, () => {
-                if (oldUnsub) oldUnsub();
-                userAppUnsub();
-              });
-            }
-          }
-        }
-
         setLoading(false);
       },
       (err) => {
@@ -135,29 +97,68 @@ export const useJobs = (): UseJobsReturn => {
       }
     );
 
-    unsubs.push(jobsUnsub);
+    return () => {
+      try {
+        jobsUnsub();
+      } catch (e) {
+        console.warn('jobs unsubscribe failed', e);
+      }
+    };
+  }, [authLoading]);
+
+  // 2. Dépendances des missions suivies (nombre de candidatures + statut de
+  //    l'utilisateur). Un abonnement est créé UNE SEULE FOIS par mission: seuls
+  //    la liste suivie, le rôle admin et l'utilisateur provoquent une recréation.
+  useEffect(() => {
+    if (!adminReady) return;
+
+    const unsubs = new Map<string, () => void>();
+    const jobIds = trackedJobIdsKey ? trackedJobIdsKey.split('|') : [];
+
+    for (const jobId of jobIds) {
+      const appsUnsub = jobsService.subscribeToApplications(
+        jobId,
+        (count, participants) => {
+          setApplications(prev => ({ ...prev, [jobId]: count }));
+          if (isAdmin) {
+            setJobParticipants(prev => ({ ...prev, [jobId]: participants }));
+          }
+        }
+      );
+      let unsub = appsUnsub;
+
+      // Visiteur anonyme: les règles Firestore refusent la lecture des candidatures
+      // (`allow read: if isSignedIn()`). Avant, on créait 2 abonnements voués à
+      // l'échec par mission; désormais on n'abonne rien du tout.
+      if (user) {
+        const userAppUnsub = jobsService.subscribeToUserApplication(
+          jobId,
+          user.uid,
+          (hasApplied, isPending) => {
+            setUserApplications(prev => ({ ...prev, [jobId]: hasApplied }));
+            setUserPendingApps(prev => ({ ...prev, [jobId]: isPending }));
+          }
+        );
+        unsub = () => {
+          appsUnsub();
+          userAppUnsub();
+        };
+      }
+
+      unsubs.set(jobId, unsub);
+    }
 
     return () => {
-      // Nettoyer toutes les subscriptions
-      unsubs.forEach(u => {
-        try {
-          u();
-        } catch (e) {
-          console.warn('jobs unsubscribe failed', e);
-        }
-      });
-      
-      // Nettoyer les subscriptions des applications
-      jobApplicationUnsubs.forEach(unsub => {
+      unsubs.forEach(unsub => {
         try {
           unsub();
         } catch (e) {
           console.warn('application unsubscribe failed', e);
         }
       });
-      jobApplicationUnsubs.clear();
+      unsubs.clear();
     };
-  }, [adminReady, isAdmin, user]);
+  }, [adminReady, isAdmin, user, trackedJobIdsKey]);
 
   // Créer un job (OPTIMISÉ)
   const createJob = useCallback(async (formData: JobFormData) => {

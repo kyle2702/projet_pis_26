@@ -107,7 +107,12 @@ const Header: React.FC = () => {
           </div>
         )}
         <div className="header-logo-center" style={{ display:'flex', alignItems:'center', gap:16 }}>
-          <img src="/pis.png" alt="Logo Pionnier" className="header-logo" />
+          {/* Deux versions de la même image: le WebP pèse 17 Ko contre 62 Ko pour
+              le PNG d'origine (1022x212 affiché à 64 px de haut). */}
+          <picture>
+            <source srcSet="/pis.webp" type="image/webp" />
+            <img src="/pis.png" alt="Logo Pionnier" className="header-logo" />
+          </picture>
         </div>
       </div>
     </header>

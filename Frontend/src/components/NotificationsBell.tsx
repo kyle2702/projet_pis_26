@@ -27,7 +27,6 @@ const NotificationsBell: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [notifs, setNotifs] = useState<NotificationDoc[]>([]);
-  // const [error, setError] = useState<string | null>(null); // Conservé si besoin future UI erreurs
 
   const unreadCount = notifs.filter(n => !n.readBy || !n.readBy.includes(user?.uid || '')).length;
 

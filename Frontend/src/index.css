@@ -1,8 +1,24 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap');
+/* Les polices ne sont plus chargées ici: un @import CSS n'était découvert qu'après
+   le téléchargement de la feuille de style, et il ajoutait deux connexions tierces
+   (fonts.googleapis.com puis fonts.gstatic.com) sur le chemin du premier texte.
+   Elles sont désormais auto-hébergées dans public/fonts et déclarées dans index.html
+   (voir scripts/selfhost-fonts.mjs). Familles inchangées: 'Manrope' et 'Sora'. */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind v4.
+   Le projet utilise @tailwindcss/postcss v4, pour qui les directives v3
+   `@tailwind base/components/utilities` ne sont plus valides (et `tailwind.config.js`
+   est ignoré par la v4: la configuration se fait en CSS).
+   On importe donc explicitement le thème et les utilitaires - et volontairement
+   PAS `preflight` (l'équivalent de l'ancien `@tailwind base`): les ~700 lignes de
+   CSS maison ci-dessous tiennent déjà ce rôle, et activer le preflight d'un coup
+   changerait tout le rendu. Il pourra être ajouté écran par écran (phase 4). */
+@layer theme, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Sources scannées pour les classes utilitaires (chemins relatifs à ce fichier). */
+@source "../index.html";
+@source "./";
 
 :root {
   /* Modern Design System */

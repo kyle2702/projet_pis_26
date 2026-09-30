@@ -188,21 +188,31 @@ const HistoryPage: React.FC = () => {
         // Récupère les participants pour chaque job passé
         const parts: Record<string, string[]> = {};
         const partsMap: JobParticipants = {};
-        for (const j of past) {
-          try {
-            const sub = await getDocs(collection(db, `jobs/${j.id}/applications`));
-            parts[j.id] = sub.docs.map(p => {
-              const pd = p.data();
-              return (pd.displayName as string) || (pd.email as string) || p.id;
-            });
-            partsMap[j.id] = sub.docs.map(p => {
-              const pd = p.data();
-              return { userId: p.id, displayName: pd.displayName as string | undefined, email: pd.email as string | undefined };
-            });
-          } catch {
-            parts[j.id] = [];
-            partsMap[j.id] = [];
-          }
+        // Petits lots parallèles: avant, un `await getDocs()` par mission, l'un
+        // après l'autre (N allers-retours en série: ~80 requêtes chaînées pour 80
+        // missions historiques, et ça empire chaque année). Même résultat, latence
+        // divisée par le nombre de lots.
+        const BATCH_SIZE = 8;
+        for (let i = 0; i < past.length; i += BATCH_SIZE) {
+          const batch = past.slice(i, i + BATCH_SIZE);
+          await Promise.all(
+            batch.map(async (j) => {
+              try {
+                const sub = await getDocs(collection(db, `jobs/${j.id}/applications`));
+                parts[j.id] = sub.docs.map(p => {
+                  const pd = p.data();
+                  return (pd.displayName as string) || (pd.email as string) || p.id;
+                });
+                partsMap[j.id] = sub.docs.map(p => {
+                  const pd = p.data();
+                  return { userId: p.id, displayName: pd.displayName as string | undefined, email: pd.email as string | undefined };
+                });
+              } catch {
+                parts[j.id] = [];
+                partsMap[j.id] = [];
+              }
+            })
+          );
         }
         if (!cancelled) { setParticipants(parts); setJobParticipants(partsMap); }
         if (!cancelled) setLoading(false);

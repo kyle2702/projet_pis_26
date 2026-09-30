@@ -17,28 +17,31 @@ const Layout: React.FC = () => {
     }
   }, [user, isLoading, location.pathname, navigate]);
 
+  // Mesure de la hauteur du header (position: fixed) pour réserver la place du
+  // <main>. Le ResizeObserver se déclenche aussi sur changement de taille de
+  // fenêtre: le listener `resize` était redondant. La lecture d'offsetHeight est
+  // regroupée dans une seule frame (requestAnimationFrame) pour éviter un layout
+  // forcé à chaque événement.
   useEffect(() => {
-    const updateHeaderHeight = () => {
-      const headerElement = document.querySelector<HTMLElement>('.header');
-      if (headerElement) {
-        const headerHeight = headerElement.offsetHeight;
-        document.documentElement.style.setProperty('--header-height', `${headerHeight}px`);
-      }
+    const headerElement = document.querySelector<HTMLElement>('.header');
+    if (!headerElement) return;
+
+    let frame = 0;
+    const measure = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        document.documentElement.style.setProperty('--header-height', `${headerElement.offsetHeight}px`);
+      });
     };
 
-    updateHeaderHeight();
-    window.addEventListener('resize', updateHeaderHeight);
-    const resizeObserver = new ResizeObserver(updateHeaderHeight);
-    const headerElement = document.querySelector('.header');
-    if (headerElement) {
-      resizeObserver.observe(headerElement);
-    }
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(headerElement);
 
     return () => {
-      window.removeEventListener('resize', updateHeaderHeight);
-      if (headerElement) {
-        resizeObserver.unobserve(headerElement);
-      }
+      if (frame) cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
     };
   }, []);
 

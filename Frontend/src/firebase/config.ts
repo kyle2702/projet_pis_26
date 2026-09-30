@@ -1,7 +1,12 @@
 // Initialisation Firebase paresseuse (client Web)
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth as _getAuth, GoogleAuthProvider, type Auth } from 'firebase/auth';
-import { getFirestore as _getFirestore, type Firestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore,
+} from 'firebase/firestore';
 
 let appInstance: FirebaseApp | null = null;
 let authInstance: Auth | null = null;
@@ -43,7 +48,13 @@ export function getFirebaseAuth(): Auth {
 
 export function getFirestoreDb(): Firestore {
   if (!dbInstance) {
-    dbInstance = _getFirestore(ensureApp());
+    // Cache local persistant (IndexedDB, partagé entre onglets): les données déjà
+    // vues sont réaffichées instantanément au rechargement, puis rafraîchies en
+    // arrière-plan par le SDK. En environnement sans IndexedDB, le SDK retombe
+    // automatiquement sur un cache mémoire (aucun crash).
+    dbInstance = initializeFirestore(ensureApp(), {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
   }
   return dbInstance;
 }

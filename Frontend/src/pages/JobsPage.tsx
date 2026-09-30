@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useJobs } from '../hooks/useJobs';
 import type { JobFormData } from '../types/job.types';
+import { isUpcomingJob } from '../utils/date.utils';
 import { JobCard } from '../components/jobs/JobCard';
 import { LazyJobCard } from '../components/jobs/LazyJobCard';
 import { JobCardSkeletonList } from '../components/jobs/JobCardSkeleton';
@@ -257,7 +258,8 @@ const JobsPage: React.FC = () => {
   }
 
   const now = Date.now();
-  const upcomingJobs = jobs.filter(j => (j.dateBeginSort ?? Number.POSITIVE_INFINITY) >= now);
+  // Même prédicat que useJobs (utils/date.utils): ce qui est affiché = ce qui est abonné.
+  const upcomingJobs = jobs.filter(j => isUpcomingJob(j, now));
 
   return (
     <div
@@ -351,7 +353,7 @@ const JobsPage: React.FC = () => {
                       user={user}
                       dejaPostule={dejaPostule}
                       pending={pending}
-                      applyLoading={applyLoading}
+                      isApplying={applyLoading === job.id}
                       participants={participants}
                       onEdit={() =>
                         handleOpenEdit(job.id, {

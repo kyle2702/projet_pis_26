@@ -22,20 +22,26 @@ export default defineConfig({
       // Exclure le service worker du bundle
       external: ['/firebase-messaging-sw.js'],
       output: {
-        // Code splitting optimisé
-        manualChunks: {
-          // Bibliothèques React dans un chunk séparé
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          // Firebase dans un chunk séparé
-          'firebase-vendor': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage', 'firebase/messaging'],
-          // FullCalendar dans un chunk séparé
-          'calendar-vendor': [
-            '@fullcalendar/react',
-            '@fullcalendar/daygrid',
-            '@fullcalendar/timegrid',
-            '@fullcalendar/list',
-            '@fullcalendar/interaction'
-          ]
+        // Code splitting optimisé.
+        // Une fonction plutôt qu'un objet: la forme objet embarquait TOUT ce qui
+        // était listé, y compris `firebase/storage` (importé nulle part) et
+        // `firebase/messaging`, qui se retrouvaient donc dans le chunk critique du
+        // premier rendu.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          const path = id.replace(/\\/g, '/');
+          // Messaging (notifications): chunk à part, chargé seulement quand la
+          // permission de notifications est accordée.
+          if (path.includes('/@firebase/messaging/') || path.includes('/firebase/messaging/')) {
+            return 'firebase-messaging';
+          }
+          if (path.includes('/@firebase/') || path.includes('/firebase/')) return 'firebase-vendor';
+          if (path.includes('/@fullcalendar/')) return 'calendar-vendor';
+          if (path.includes('/react-router')) return 'router-vendor';
+          if (path.includes('/react-dom/') || path.includes('/react/') || path.includes('/scheduler/')) {
+            return 'react-vendor';
+          }
+          return;
         },
         // Nommage des chunks pour meilleur cache
         chunkFileNames: 'assets/[name]-[hash].js',

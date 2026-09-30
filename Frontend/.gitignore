@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Rapports Lighthouse bruts (le résumé exploitable est versé dans PERF_BASELINE.md)
+# `npm run audit:clean` vide ce dossier ; il est recréé automatiquement par audit.mjs
+audits/
+
+# Sortie de npm run probe:runtime (reproductible à volonté, pas versionnable)
+probe-runtime.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

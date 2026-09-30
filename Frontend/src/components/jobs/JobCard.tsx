@@ -3,8 +3,9 @@
  * Optimisé pour mobile avec React.memo
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import type { Job } from '../../types/job.types';
+import './JobCard.css';
 
 interface JobCardProps {
   job: Job;
@@ -14,7 +15,9 @@ interface JobCardProps {
   user: { uid: string; email: string | null; displayName: string | null } | null;
   dejaPostule: boolean;
   pending: boolean;
-  applyLoading: string | null;
+  /** État de candidature de CETTE mission (booléen local: avant, une chaîne globale
+   *  faisait re-rendre toutes les cartes dès qu'un membre postulait). */
+  isApplying: boolean;
   participants: Array<{ displayName?: string; email?: string; userId: string }>;
   onEdit: () => void;
   onDelete: () => void;
@@ -29,48 +32,29 @@ const JobCardComponent: React.FC<JobCardProps> = ({
   user,
   dejaPostule,
   pending,
-  applyLoading,
+  isApplying,
   participants,
   onEdit,
   onDelete,
   onApply
 }) => {
-  // Détection mobile pour désactiver les animations hover
-  const isMobile = useMemo(() => {
-    return typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
-  }, []);
-
   return (
     <div
       id={`job-${job.id}`}
-      className="animate-fade-in"
+      className={`job-card animate-fade-in${isFocused ? ' job-card--focused' : ''}`}
       style={{
         border: isFocused ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
         borderRadius: 'var(--radius-xl)',
         padding: '0.5rem',
         background: 'var(--color-surface)',
-        boxShadow: isFocused ? 'var(--shadow-xl)' : 'var(--shadow-md)',
         color: 'var(--color-text)',
         position: 'relative',
-        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
         width: '100%',
         minHeight: 220,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden'
       }}
-      onMouseEnter={!isMobile ? (e) => {
-        if (!isFocused) {
-          e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
-          e.currentTarget.style.transform = 'translateY(-4px)';
-        }
-      } : undefined}
-      onMouseLeave={!isMobile ? (e) => {
-        if (!isFocused) {
-          e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-          e.currentTarget.style.transform = 'translateY(0)';
-        }
-      } : undefined}
     >
       {/* Effet de gradient au survol */}
       <div
@@ -288,7 +272,8 @@ const JobCardComponent: React.FC<JobCardProps> = ({
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <button
               onClick={onApply}
-              disabled={pending || applyLoading === job.id || placesRestantes === 0}
+              disabled={pending || isApplying || placesRestantes === 0}
+              className="job-apply-btn"
               style={{
                 padding: '0.75rem 2rem',
                 borderRadius: 'var(--radius-lg)',
@@ -302,28 +287,18 @@ const JobCardComponent: React.FC<JobCardProps> = ({
                   : 'var(--primary-gradient)',
                 color: placesRestantes === 0 ? '#94a3b8' : 'white',
                 fontWeight: 600,
-                cursor: (placesRestantes === 0 || pending || applyLoading === job.id) ? 'not-allowed' : 'pointer',
+                cursor: (placesRestantes === 0 || pending || isApplying) ? 'not-allowed' : 'pointer',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 boxShadow: placesRestantes === 0 ? 'none' : 'var(--shadow-md)',
                 fontSize: '0.95rem',
-                opacity: (applyLoading === job.id) ? 0.7 : 1,
+                opacity: isApplying ? 0.7 : 1,
                 position: 'relative',
                 overflow: 'hidden',
                 width: '100%',
                 maxWidth: '300px'
               }}
-              onMouseEnter={(e) => {
-                if (!pending && !applyLoading && placesRestantes > 0) {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = placesRestantes === 0 ? 'none' : 'var(--shadow-md)';
-              }}
             >
-              {applyLoading === job.id ? (
+              {isApplying ? (
                 <>
                   <span style={{ 
                     display: 'inline-block',
@@ -375,16 +350,21 @@ const JobCardComponent: React.FC<JobCardProps> = ({
   );
 };
 
+/** Signature des champs réellement affichés: une mission modifiée (titre, dates,
+ *  lieu, description, rémunération, places) doit rafraîchir sa carte. */
+const jobSignature = (job: Job) =>
+  [job.title, job.places, job['date-begin'], job['date-end'], job.adress, job.remuneration, job.description].join('|');
+
 // Mémoisation du composant pour éviter les re-renders inutiles
 export const JobCard = React.memo(JobCardComponent, (prevProps, nextProps) => {
   // Re-render uniquement si ces props changent
   return (
-    prevProps.job.id === nextProps.job.id &&
+    jobSignature(prevProps.job) === jobSignature(nextProps.job) &&
     prevProps.isFocused === nextProps.isFocused &&
     prevProps.placesRestantes === nextProps.placesRestantes &&
     prevProps.dejaPostule === nextProps.dejaPostule &&
     prevProps.pending === nextProps.pending &&
-    prevProps.applyLoading === nextProps.applyLoading &&
+    prevProps.isApplying === nextProps.isApplying &&
     prevProps.participants.length === nextProps.participants.length &&
     prevProps.isAdmin === nextProps.isAdmin
   );

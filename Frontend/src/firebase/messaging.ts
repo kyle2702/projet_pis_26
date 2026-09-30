@@ -1,6 +1,7 @@
 import { getToken, deleteToken, onMessage, isSupported, type Messaging, type MessagePayload } from 'firebase/messaging';
-import { getFirestore, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getApp, initializeApp } from 'firebase/app';
+import { getFirestoreDb } from './config';
 
 // On réutilise la config via import.meta.env comme dans config.ts sans le réimporter pour éviter cycles
 function getFirebaseApp() {
@@ -49,7 +50,7 @@ export async function initMessagingAndGetToken(userId: string, forceRefresh = fa
     }
     if (token) {
       console.log('[FCM] Token obtenu, enregistrement dans Firestore...');
-      const db = getFirestore(app);
+      const db = getFirestoreDb();
       const ref = doc(db, 'fcmTokens', userId);
       const encodedToken = encodeURIComponent(token);
       const v2Ref = doc(db, 'fcmTokensV2', `${userId}__${encodedToken}`);

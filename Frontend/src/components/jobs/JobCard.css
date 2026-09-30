@@ -1,0 +1,35 @@
+/* Carte mission.
+ *
+ * Le survol est désormais géré en CSS (avant: mutation de `style` en JS via
+ * onMouseEnter/onMouseLeave, donc un recalcul de layout à chaque passage de
+ * souris) et n'est appliqué que sur les appareils réellement survolables
+ * (@media hover), ce qui remplace l'ancienne détection `matchMedia` en JS.
+ * Les valeurs sont identiques et passent par les tokens du thème clair/sombre.
+ */
+.job-card {
+  box-shadow: var(--shadow-md);
+  transition:
+    box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.job-card--focused {
+  box-shadow: var(--shadow-xl);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .job-card:not(.job-card--focused):hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-4px);
+  }
+}
+
+/* Bouton "Postuler": l'état de base reste piloté par React (dégradé "complet",
+ * "en attente"...), seul l'effet de survol revient au CSS. Le !important est
+ * nécessaire car le style de base est inline (donc prioritaire). */
+@media (hover: hover) and (pointer: fine) {
+  .job-apply-btn:not(:disabled):hover {
+    box-shadow: var(--shadow-lg) !important;
+    transform: translateY(-2px);
+  }
+}
